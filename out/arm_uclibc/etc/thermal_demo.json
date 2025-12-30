@@ -1,0 +1,155 @@
+{
+    "restTemp": 120,
+    "balanceDownTemp": 105,
+    "balanceUpTemp":70,
+    "0": {
+        "level":0,
+        "ISP": {
+                "enable": true,
+                "top_freq": 800000000,
+                "axi_freq": 800000000,
+                "ir_freq": 800000000,
+                "sensor":
+                [
+                    {
+                        "enable":true,
+                        "fps": 60,
+                        "ai":true,
+                        "sdr":false,
+                        "id":0
+                    },
+                    {
+                        "enable":true,
+                        "fps": 60,
+                        "ai":true,
+                        "sdr":false,
+                        "id":1
+                    }
+                ]
+        },
+        "VPP": {
+            "enable": true,
+            "freq": 800000000
+
+        },
+        "GDC": {
+            "enable": true,
+            "freq": 800000000
+        },
+        "TDP": {
+            "enable": true,
+            "freq": 800000000
+        },
+        "VGP": {
+            "enable": false,
+            "freq": 800000000
+        },
+        "VENC": {
+            "enable": true,
+            "freq": 800000000
+        },
+        "JDEC": {
+            "enable": true,
+            "freq":	800000000
+        },
+        "DPU0": {
+            "enable": true,
+            "freq": 800000000
+        },
+        "DPU1": {
+            "enable": true,
+            "freq": 800000000
+        },
+        "DPU2": {
+            "enable": false,
+            "freq": 800000000
+        },
+        "NPU": {
+            "enable": true,
+            "freq": 800000000
+        },
+        "DDR":	{
+            "enable": true,
+            "freq": 800000000
+        },
+        "CPU": {
+            "enable": true,
+            "freq":	800000000
+        }
+    },
+    "1": {
+        "level":1,
+        "ISP": {
+                "enable": true,
+                "top_freq": 300000000,
+                "axi_freq": 300000000,
+                "ir_freq": 300000000,
+                "sensor":
+                [
+                    {
+                        "enable":true,
+                        "fps": 60,
+                        "ai":true,
+                        "sdr":false,
+                        "id":0
+                    },
+                    {
+                        "enable":true,
+                        "fps": 60,
+                        "ai":true,
+                        "sdr":false,
+                        "id":1
+                    }
+                ]
+        },
+        "VPP": {
+            "enable": true,
+            "freq": 300000000
+
+        },
+        "GDC": {
+            "enable": true,
+            "freq": 300000000
+        },
+        "TDP": {
+            "enable": true,
+            "freq": 300000000
+        },
+        "VGP": {
+            "enable": false,
+            "freq": 300000000
+        },
+        "VENC": {
+            "enable": true,
+            "freq": 300000000
+        },
+        "JDEC": {
+            "enable": true,
+            "freq":	300000000
+        },
+        "DPU0": {
+            "enable": true,
+            "freq": 300000000
+        },
+        "DPU1": {
+            "enable": true,
+            "freq": 300000000
+        },
+        "DPU2": {
+            "enable": false,
+            "freq": 300000000
+        },
+        "NPU": {
+            "enable": true,
+            "freq": 300000000
+        },
+        "DDR":	{
+            "enable": true,
+            "freq": 300000000
+        },
+        "CPU": {
+            "enable": true,
+            "freq":	300000000
+        }
+    }
+}

@@ -1,0 +1,47 @@
+{
+    "//": "decoder settings",
+    "scenario_2":
+    {
+        "instance":
+        [
+            {
+                "//": "0: H264,  2:H265",
+                "decoder_type": 0,
+                "path":"/mnt/dahua1080p.h264",
+                "framerate": 25,
+                "out_fifo_depth": 10,
+                "//":"0: preview , 1: playback",
+                "display_mode": 1,
+                "//":"1: frame , 3: stream",
+                "input_mode": 1,
+                "//":"0: IPB , 2: IP,  3: I",
+                "vdec_mode": 0,
+                "resolution": {"w": 1920, "h": 1080}
+            }
+        ]
+    },
+    "scenario_3":
+    {
+        "instance":
+        [
+            {
+                "//": "0: H264,  2:H265",
+                "decoder_type": 0,
+                "path":"/mnt/dahua1080p.h264",
+                "framerate": 25,
+                "out_fifo_depth": 10,
+                "//":"0: preview , 1: playback",
+                "display_mode": 1,
+                "//":"1: frame , 3: stream",
+                "input_mode": 1,
+                "//":"0: IPB , 2: IP,  3: I",
+                "vdec_mode": 0,
+                "resolution": {"w": 1920, "h": 1080}
+            }
+        ]
+    },
+    "//": "dual 10.1 lvds screen",
+    "scenario_4": 2,
+    "//": "single 10.1 lvds screen",
+    "scenario_5": 3
+}

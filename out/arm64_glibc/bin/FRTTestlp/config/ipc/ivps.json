@@ -1,0 +1,94 @@
+{
+  "//": "ivps settings",
+  "//": "Single sensor",
+  "scenario_0":
+  [
+    {
+      "grp_id": 0,
+      "grp_info":
+      {
+        "grp_chn_num": 3,
+        "engine_filter_0": "VPP",
+        "//": "if group filter1 set engine, it will be offline between GDC and the engine",
+        "engine_filter_1": "",
+        "engine_filter_2": ["SCL", "SCL", "SCL", ""],
+        "engine_filter_3": ["", "", "", ""],
+        "grp_framerate": {"src": -1, "dst": -1},
+        "chn_framerate":
+        [
+          {"src": -1, "dst": -1}, {"src": -1, "dst": 5}, {"src": -1, "dst": -1}, {"src": -1, "dst": -1}
+        ],
+        "grp_resolution": {"w": -1, "h": -1},
+        "chn_resolution":
+        [
+           {"w": -1, "h": -1}, {"w": 1024, "h": 576}, {"w": 720, "h": 576}, {"w": -1, "h": -1}
+        ],
+        "chn_link_flag": [0, 0, 1, 0],
+        "chn_out_fifo_depth": [2, 2, 0, 0],
+        "grp_fbc":{"mode": 0, "level": 0},
+        "chn_fbc":
+        [
+          {"mode": 2, "level": 4}, {"mode": 0, "level": 0}, {"mode": 0, "level": 0}, {"mode": 0, "level": 0}
+        ],
+        "grp_inplace":[0, 0],
+        "chn_inplace":[[0, 1], [0, 1], [0, 0], [0, 0]],
+        "//chn_scl": "0: Auto; 1: Bilinear interpolation; 2: Phase filtering",
+        "chn_scl": [2, 2, 1, 0],
+        "chn_voosd_flag": [0, 0, 0, 0],
+        "chn_vorect_flag": [0, 0, 0, 0],
+        "spec_engine_config":
+        {
+          "//rotation": "0:0; 1:90; 2:180; 3:270",
+          "rotation_enable":1,
+          "rotation": 0,
+          "mask_enable":1
+        }
+      }
+    }
+  ],
+  "scenario_1":
+  [
+    {
+      "grp_id": 0,
+      "grp_info":
+      {
+        "grp_chn_num": 2,
+        "engine_filter_0": "VPP",
+        "//": "if group filter1 set engine, it will be offline between GDC and the engine",
+        "engine_filter_1": "",
+        "engine_filter_2": ["SCL", "SCL", "", ""],
+        "engine_filter_3": ["", "", "", ""],
+        "grp_framerate": {"src": -1, "dst": -1},
+        "chn_framerate":
+        [
+          {"src": -1, "dst": -1}, {"src": -1, "dst": 5}, {"src": -1, "dst": -1}, {"src": -1, "dst": -1}
+        ],
+        "grp_resolution": {"w": -1, "h": -1},
+        "chn_resolution":
+        [
+           {"w": -1, "h": -1}, {"w": 1024, "h": 576}, {"w": -1, "h": -1}, {"w": -1, "h": -1}
+        ],
+        "chn_link_flag": [1, 0, 0, 0],
+        "chn_out_fifo_depth": [0, 2, 0, 0],
+        "grp_fbc":{"mode": 0, "level": 0},
+        "chn_fbc":
+        [
+          {"mode": 2, "level": 4}, {"mode": 0, "level": 0}, {"mode": 0, "level": 0}, {"mode": 0, "level": 0}
+        ],
+        "grp_inplace":[0, 0],
+        "chn_inplace":[[0, 0], [0, 1], [0, 0], [0, 0]],
+        "//chn_scl": "0: Auto; 1: Bilinear interpolation; 2: Phase filtering",
+        "chn_scl": [2, 2, 1, 0],
+        "chn_voosd_flag": [0, 0, 0, 0],
+        "chn_vorect_flag": [0, 0, 0, 0],
+        "spec_engine_config":
+        {
+          "//rotation": "0:0; 1:90; 2:180; 3:270",
+          "rotation_enable":1,
+          "rotation": 0,
+          "mask_enable":1
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+    "//": "vo settings",
+    "scenario_2":
+    {
+        "instance":
+        [
+            {
+                "dev_id": 0,
+                "//interface_type_desc":"5: AX_VO_INTF_LVDS",
+                "interface_type": 5,
+                "//interface_type_sync":"16: AX_VO_OUTPUT_1024x600_60 , 39: AX_VO_OUTPUT_USER",
+                "interface_sync": 16,
+                "layer_id": 0,
+                "layer_depth": 6,
+                "layer_sync_mode_desc": "0: Normal, 3: Primary",
+                "layer_sync_mode": 0,
+                "chn_num":2,
+                "chn_depth": 7
+            }
+        ]
+    },
+    "scenario_3":
+    {
+        "instance":
+        [
+            {
+                "dev_id": 0,
+                "//interface_type_desc":"5: AX_VO_INTF_LVDS",
+                "interface_type": 5,
+                "//interface_type_sync":"16: AX_VO_OUTPUT_1024x600_60 , 39: AX_VO_OUTPUT_USER",
+                "interface_sync": 16,
+                "layer_id": 0,
+                "layer_depth": 6,
+                "layer_sync_mode_desc": "0: Normal, 3: Primary",
+                "layer_sync_mode": 0,
+                "chn_num":2,
+                "chn_depth": 7
+            }
+        ]
+    },
+    "scenario_4":
+    {
+        "instance":
+        [
+            {
+                "dev_id": 0,
+                "//interface_type_desc":"5: AX_VO_INTF_LVDS",
+                "interface_type": 5,
+                "//interface_type_sync":"16: AX_VO_OUTPUT_1024x600_60 , 39: AX_VO_OUTPUT_USER",
+                "interface_sync": 39,
+                "layer_id": 0,
+                "layer_depth": 6,
+                "layer_sync_mode_desc": "0: Normal, 3: Primary",
+                "layer_sync_mode": 0,
+                "chn_num":2,
+                "chn_depth": 7
+            }
+        ]
+    },
+    "scenario_5":
+    {
+        "instance":
+        [
+            {
+                "dev_id": 0,
+                "//interface_type_desc":"5: AX_VO_INTF_LVDS",
+                "interface_type": 5,
+                "//interface_type_sync":"16: AX_VO_OUTPUT_1024x600_60 , 39: AX_VO_OUTPUT_USER",
+                "interface_sync": 39,
+                "layer_id": 0,
+                "layer_depth": 6,
+                "layer_sync_mode_desc": "0: Normal, 3: Primary",
+                "layer_sync_mode": 0,
+                "chn_num":2,
+                "chn_depth": 7
+            }
+        ]
+    }
+}
