@@ -1,0 +1,17 @@
+out/arm64_glibc/bin/sample_*
+out/arm64_glibc/bin/FRTDemo
+out/arm64_glibc/bin/OPALDemo
+out/arm64_glibc/bin/OPTEE
+out/arm64_glibc/include/ax_opal_api.h
+out/arm64_glibc/include/ax_opal_type.h
+out/arm64_glibc/lib/libax_opal.debug
+out/arm64_glibc/lib/libax_opal.a
+out/arm64_glibc/lib/libsns_dummy.*
+out/arm64_glibc/lib/libsns_os04a10.*
+out/arm64_glibc/lib/libsns_os04d10.*
+out/arm64_glibc/lib/libsns_sc200ai.*
+out/arm64_glibc/lib/libsns_sc850sl.*
+out/arm64_glibc/ta/*.ta
+out/arm64_glibc/lib/libsns_sc450ai.*
+out/arm64_glibc/lib/libsns_sc500ai.*
+out/arm64_glibc/third-party
