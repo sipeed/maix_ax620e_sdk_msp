@@ -15,7 +15,9 @@
 #include "ax_sensor_struct.h"
 #include "ax_module_version.h"
 
-SNS_STATE_OBJ *gSc500aiCtx[AX_VIN_MAX_PIPE_NUM];
+// ### SIPEED EDIT ###
+extern SNS_STATE_OBJ *gSc500aiCtx[AX_VIN_MAX_PIPE_NUM];
+// ### SIPEED EDIT END ###
 
 #define SENSOR_GET_CTX(dev, pstCtx) (pstCtx = gSc500aiCtx[dev])
 #define SENSOR_SET_CTX(dev, pstCtx) (gSc500aiCtx[dev] = pstCtx)

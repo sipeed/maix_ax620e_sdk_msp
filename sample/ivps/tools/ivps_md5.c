@@ -195,7 +195,9 @@ static int IVPS_FileMD5Calc(const char *pFilePath, IVPS_MD5_RESULT_T *ptResult)
 {
 
     /* 128 bit */
-    uint8_t result[16];
+// ### SIPEED EDIT ###
+    uint8_t result[16] = {0};
+// ### SIPEED EDIT END ###
     int i;
     AX_U64 LowValue = 0, HighValue = 0;
 

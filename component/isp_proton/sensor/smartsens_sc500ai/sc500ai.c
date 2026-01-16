@@ -32,6 +32,9 @@
 #include "sc500ai_hdr_2x.h"
 #endif
 
+// ### SIPEED EDIT ###
+SNS_STATE_OBJ *gSc500aiCtx[AX_VIN_MAX_PIPE_NUM];
+// ### SIPEED EDIT END ###
 const char axera_sc500ai_version[] = AXERA_MODULE_VERSION;
 
 /****************************************************************************

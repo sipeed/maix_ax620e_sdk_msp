@@ -10,7 +10,9 @@
 
 #include <map>
 #include "statMgr.h"
-
+// ### SIPEED EDIT ###
+#include <string>
+// ### SIPEED EDIT END ###
 AX_VOID StatTrackMgr(const AX_SKEL_OBJECT_ITEM_T *pstObjectItems, STAT_OBJECT_NUM_T *pObjectNum) {
     if (!pstObjectItems || !pObjectNum) {
         return;
