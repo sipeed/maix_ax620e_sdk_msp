@@ -125,6 +125,14 @@ AX_S32 COMMON_VIN_GetSnsConfig(SAMPLE_SNS_TYPE_E eSnsType,
         memcpy(pPipeAttr, &gSc850slPipeAttr, sizeof(AX_VIN_PIPE_ATTR_T));
         memcpy(&pChnAttr[0], &gSc850slChn0Attr, sizeof(AX_VIN_CHN_ATTR_T));
         break;
+    case SMARTSENS_SC035HGS:
+        memcpy(ptMipiAttr, &gSc035hgsMipiAttr, sizeof(AX_MIPI_RX_ATTR_T));
+        memcpy(ptSnsAttr, &gSc035hgsSnsAttr, sizeof(AX_SNS_ATTR_T));
+        memcpy(ptSnsClkAttr, &gSc035hgsSnsClkAttr, sizeof(AX_SNS_CLK_ATTR_T));
+        memcpy(pDevAttr, &gSc035hgsDevAttr, sizeof(AX_VIN_DEV_ATTR_T));
+        memcpy(pPipeAttr, &gSc035hgsPipeAttr, sizeof(AX_VIN_PIPE_ATTR_T));
+        memcpy(&pChnAttr[0], &gSc035hgsChn0Attr, sizeof(AX_VIN_CHN_ATTR_T));
+        break;
 // ### SIPEED EDIT END ###
     case SAMSUNG_S5KJN1SQ03:
         memcpy(ptMipiAttr, &gs5kjn1sq03MipiAttr, sizeof(AX_MIPI_RX_ATTR_T));
@@ -166,7 +174,9 @@ AX_S32 COMMON_VIN_StartMipi(AX_U8 nRxDev, AX_INPUT_MODE_E eInputMode, AX_MIPI_RX
     memcpy(&tMipiDev.tMipiAttr, ptMipiAttr, sizeof(AX_MIPI_RX_ATTR_T));
 
     if ((tMipiDev.eInputMode == AX_INPUT_MODE_MIPI) || (tMipiDev.eInputMode == AX_INPUT_MODE_LVDS)) {
-        if (tMipiDev.tMipiAttr.eLaneNum == AX_MIPI_DATA_LANE_4) {
+        if (eLaneComboMode == AX_LANE_COMBO_MODE_2) {
+            AX_MIPI_RX_SetLaneCombo(AX_LANE_COMBO_MODE_2);
+        } else if (tMipiDev.tMipiAttr.eLaneNum == AX_MIPI_DATA_LANE_4) {
             AX_MIPI_RX_SetLaneCombo(AX_LANE_COMBO_MODE_0);
         } else {
             AX_MIPI_RX_SetLaneCombo(AX_LANE_COMBO_MODE_1);
@@ -419,5 +429,4 @@ AX_S32 COMMON_VIN_StopChn(AX_U8 pipe)
 
     return 0;
 }
-
 

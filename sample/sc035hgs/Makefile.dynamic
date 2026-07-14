@@ -1,0 +1,79 @@
+################################################################################
+#	prepare param
+################################################################################
+CUR_PATH            := $(shell pwd)
+HOME_PATH           := $(abspath $(CUR_PATH)/../../..)
+
+include $(HOME_PATH)/build/color.mk
+include $(HOME_PATH)/build/config.mak
+
+PRJ_OUT_HOME        := $(HOME_PATH)/build/out/$(PROJECT)
+OBJ_OUT_PATH        := $(PRJ_OUT_HOME)/objs
+SRC_RELATIVE_PATH   := $(subst $(HOME_PATH)/,,$(CUR_PATH))
+TARGET_OUT_PATH     := $(OBJ_OUT_PATH)/$(SRC_RELATIVE_PATH)
+ifeq ($(strip $(AXERA_SDK_RELEASE)),TRUE)
+SRC_SWITCH_PATH		:= $(HOME_PATH)/msp/component/isp_proton/sensor/mipi_switch
+else
+SRC_SWITCH_PATH		:= $(HOME_PATH)/msp/component/isp_proton/sensor/platform/mipi_switch
+endif
+
+OUT_PATH            := $(MSP_OUT_PATH)
+SRC_PATH            := $(CUR_PATH)
+SAMPLE_PATH         := $(SRC_PATH)/..
+
+################################################################################
+#	set task
+################################################################################
+MOD_NAME            := sample_sc035hgs
+OUTPUT              := $(TARGET_OUT_PATH)/.obj
+
+SRCS                := $(SRC_PATH)/sample_sc035hgs.c
+SRCS                += $(SAMPLE_PATH)/common/common_cam.c
+SRCS                += $(SAMPLE_PATH)/common/common_sys.c
+SRCS                += $(SAMPLE_PATH)/common/common_vin.c
+SRCS                += $(SAMPLE_PATH)/common/common_isp.c
+SRCS                += $(SAMPLE_PATH)/common/common_hw.c
+SRCS                += $(SAMPLE_PATH)/common/common_nt.c
+SRCS                += $(SRC_SWITCH_PATH)/mipi_switch.c
+
+vpath %.c $(addsuffix :,$(dir $(patsubst %.c,%.o,$(SRCS))))
+
+CINCLUDE            += -I$(SRC_PATH) \
+                       -I$(OUT_PATH)/include \
+                       -I$(SRC_SWITCH_PATH) \
+                       -I$(SAMPLE_PATH)/common
+
+OBJS                := $(SRCS:%.c=$(OUTPUT)/%.o)
+DEPS                := $(OBJS:%.o=%.d)
+TARGET              := $(MOD_NAME)
+
+CFLAGS              := ${EXEC_FLAG}
+ifeq ($(debug),yes)
+CFLAGS              += -Werror -Wall -O0 -ggdb3
+else
+CFLAGS              += -Werror -Wall -O2
+endif
+
+CFLAGS              += -DISP_PIPELINE_INVOLE_NPU
+CFLAGS              += -ldl
+
+CLIB                += -Wl,-rpath-link=$(OUT_PATH)/lib
+CLIB                += -L$(OUT_PATH)/lib
+CLIB                += -lax_sys
+CLIB                += -lax_ae
+CLIB                += -lax_awb
+CLIB                += -lax_af
+CLIB                += -lax_proton
+CLIB                += -lax_engine
+CLIB                += -lax_mipi
+CLIB                += -lax_ivps
+CLIB                += -lax_nt_stream -lax_nt_ctrl
+CLIB                += -lm -lpthread
+
+INSTALL_TARGET      := $(TARGET)
+MV_TARGET           := $(INSTALL_TARGET)
+INSTALL_DIR         := $(ROOTFS_TARGET_PATH)/bin/
+
+LINK = $(CC)
+
+include $(HOME_PATH)/build/rules.mak

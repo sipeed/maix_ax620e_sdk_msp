@@ -871,6 +871,76 @@ AX_VIN_CHN_ATTR_T gSc850slChn0Attr = {
     .tCompressInfo = {AX_COMPRESS_MODE_LOSSY, 4},
     .tFrameRateCtrl = {AX_INVALID_FRMRATE, AX_INVALID_FRMRATE},
 };
+
+AX_MIPI_RX_ATTR_T gSc035hgsMipiAttr = {
+    .ePhyMode = AX_MIPI_PHY_TYPE_DPHY,
+    .eLaneNum = AX_MIPI_DATA_LANE_2,
+    .nDataRate = 720,
+    .nDataLaneMap[0] = 0,
+    .nDataLaneMap[1] = 2,
+    .nDataLaneMap[2] = 3,
+    .nDataLaneMap[3] = 4,
+    .nClkLane[0]     = 1,
+    .nClkLane[1]     = 5,
+};
+
+AX_SNS_ATTR_T gSc035hgsSnsAttr = {
+    .nWidth = 640,
+    .nHeight = 480,
+    .fFrameRate = 120,
+    .eSnsMode = AX_SNS_LINEAR_MODE,
+    .eRawType = AX_RT_RAW12,
+    .eBayerPattern = AX_BP_RGGB,
+    .bTestPatternEnable = AX_FALSE,
+};
+
+AX_SNS_CLK_ATTR_T gSc035hgsSnsClkAttr = {
+    .nSnsClkIdx = 0,
+    .eSnsClkRate = AX_SNS_CLK_27M,
+};
+
+AX_VIN_DEV_ATTR_T gSc035hgsDevAttr = {
+    .bImgDataEnable = AX_TRUE,
+    .bNonImgDataEnable = AX_FALSE,
+    .eDevMode = AX_VIN_DEV_ONLINE,
+    .eSnsIntfType = AX_SNS_INTF_TYPE_MIPI_RAW,
+    .tDevImgRgn[0] = {0, 0, 640, 480},
+    .tDevImgRgn[1] = {0, 0, 640, 480},
+    .tDevImgRgn[2] = {0, 0, 640, 480},
+    .tDevImgRgn[3] = {0, 0, 640, 480},
+    .ePixelFmt = AX_FORMAT_BAYER_RAW_12BPP_PACKED,
+    .eBayerPattern = AX_BP_RGGB,
+    .eSnsMode = AX_SNS_LINEAR_MODE,
+    .eSnsOutputMode = AX_SNS_NORMAL,
+    .tMipiIntfAttr.szImgVc[0] = 0,
+    .tMipiIntfAttr.szImgDt[0] = AX_MIPI_CSI_DT_RAW12,
+    .tMipiIntfAttr.szInfoVc[0] = 31,
+    .tMipiIntfAttr.szInfoDt[0] = 63,
+    .tCompressInfo = {AX_COMPRESS_MODE_NONE, 0},
+    .tFrameRateCtrl = {AX_INVALID_FRMRATE, AX_INVALID_FRMRATE},
+};
+
+AX_VIN_PIPE_ATTR_T gSc035hgsPipeAttr = {
+    .ePipeWorkMode = AX_VIN_PIPE_NORMAL_MODE1,
+    .tPipeImgRgn = {0, 0, 640, 480},
+    .nWidthStride = 640,
+    .eBayerPattern = AX_BP_RGGB,
+    .ePixelFmt = AX_FORMAT_BAYER_RAW_12BPP_PACKED,
+    .eSnsMode = AX_SNS_LINEAR_MODE,
+    .tCompressInfo = {AX_COMPRESS_MODE_NONE, 0},
+    .tNrAttr = {{0, {AX_COMPRESS_MODE_NONE, 0}}, {0, {AX_COMPRESS_MODE_NONE, 0}}},
+    .tFrameRateCtrl = {AX_INVALID_FRMRATE, AX_INVALID_FRMRATE},
+};
+
+AX_VIN_CHN_ATTR_T gSc035hgsChn0Attr = {
+    .nWidth = 640,
+    .nHeight = 480,
+    .nWidthStride = 640,
+    .eImgFormat = AX_FORMAT_YUV420_SEMIPLANAR,
+    .nDepth = 1,
+    .tCompressInfo = {AX_COMPRESS_MODE_NONE, 0},
+    .tFrameRateCtrl = {AX_INVALID_FRMRATE, AX_INVALID_FRMRATE},
+};
 // ### SIPEED EDIT END ###
 
 AX_MIPI_RX_ATTR_T gs5kjn1sq03MipiAttr = {

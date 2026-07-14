@@ -39,6 +39,7 @@ typedef struct _AX_SENSOR_LIB_TAB_ {
 extern AX_SENSOR_REGISTER_FUNC_T gSnsdummyObj;
 #endif // SAMPLE_SNS_DUMMY_NO_SUPPORT
 extern AX_SENSOR_REGISTER_FUNC_T gSnsos04a10Obj;
+extern AX_SENSOR_REGISTER_FUNC_T gSnssc035hgsObj;
 #else
 const static AX_SENSOR_LIB_TAB s_libSensorTab[] = {
 #ifndef SAMPLE_SNS_DUMMY_NO_SUPPORT
@@ -52,6 +53,7 @@ const static AX_SENSOR_LIB_TAB s_libSensorTab[] = {
     {SMARTSENS_SC450AI,             "libsns_sc450ai.so",        "gSnssc450aiObj"},
 // ### SIPEED EDIT ###
     {SMARTSENS_SC850SL,             "libsns_sc850sl.so",        "gSnssc850slObj"},
+    {SMARTSENS_SC035HGS,            "libsns_sc035hgs.so",       "gSnssc035hgsObj"},
 // ### SIPEED EDIT END ###
     {SAMPLE_SNS_DVP,                "libsns_sc4210.so",         "gSnssc4210Obj"},
     {SAMPLE_SNS_DVP_IR,             "libsns_rtd2121w.so",       "gSnsrtd2121wObj"},
@@ -77,6 +79,9 @@ AX_SENSOR_REGISTER_FUNC_T *COMMON_ISP_GetSnsObj(SAMPLE_SNS_TYPE_E eSnsType)
 #endif // SAMPLE_SNS_DUMMY_NO_SUPPORT
     case OMNIVISION_OS04A10:
         ptSnsHdl = &gSnsos04a10Obj;
+        break;
+    case SMARTSENS_SC035HGS:
+        ptSnsHdl = &gSnssc035hgsObj;
         break;
     default:
         ptSnsHdl = &gSnsos04a10Obj;

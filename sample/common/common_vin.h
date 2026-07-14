@@ -36,6 +36,7 @@ typedef enum {
     SMARTSENS_SC200AI = 11,
 // ### SIPEED EDIT ###
     SMARTSENS_SC850SL = 12,
+    SMARTSENS_SC035HGS = 13,
 // ### SIPEED EDIT END ###
     /*samsung sensor*/
     SAMSUNG_S5KJN1SQ03 = 20,

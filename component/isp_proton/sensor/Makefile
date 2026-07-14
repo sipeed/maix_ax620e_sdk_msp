@@ -1,4 +1,4 @@
-SUBDIRS = include dummysensor ov_os04a10 ov_os04d10 smartsens_sc450ai smartsens_sc850sl smartsens_sc200ai smartsens_sc500ai
+SUBDIRS = include dummysensor ov_os04a10 ov_os04d10 smartsens_sc450ai smartsens_sc850sl smartsens_sc200ai smartsens_sc500ai smartsens_sc035hgs
 MODVER_SUBDIRS := $(filter-out include makebin, $(SUBDIRS))
 
 ################################################################################

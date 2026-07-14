@@ -15,3 +15,4 @@ out/arm64_glibc/ta/*.ta
 out/arm64_glibc/lib/libsns_sc450ai.*
 out/arm64_glibc/lib/libsns_sc500ai.*
 out/arm64_glibc/third-party
+out/arm64_glibc/lib/libsns_sc035hgs.debug
