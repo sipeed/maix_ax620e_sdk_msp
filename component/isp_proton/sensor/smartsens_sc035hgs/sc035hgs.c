@@ -6,6 +6,7 @@
 #include "ax_sensor_struct.h"
 #include "ax_base_type.h"
 #include "ax_isp_common.h"
+#include "ax_isp_iq_api.h"
 #include "isp_sensor_internal.h"
 #include "isp_sensor_types.h"
 
@@ -23,6 +24,20 @@
 
 SNS_STATE_OBJ *g_szsc035hgsCtx[AX_VIN_MAX_PIPE_NUM] = {NULL};
 extern AX_U8 gSc035hgsSlaveMode[AX_VIN_MAX_PIPE_NUM];
+
+static AX_ISP_IQ_SCENE_PARAM_T gSc035hgsSceneParam = {
+    .nAutoMode = 0,
+    .tManualParam = {
+        .nAiWorkMode = AX_AI_DISABLE,
+    },
+    .tAutoParam = {
+        .nSceneNum = 0,
+        .nDelta = 0,
+        .nRefValStart = {0},
+        .nRefValEnd = {0},
+        .nAiWorkMode = {AX_AI_DISABLE, AX_AI_DISABLE, AX_AI_DISABLE, AX_AI_DISABLE},
+    },
+};
 
 static AX_S32 sc035hgs_ctx_init(ISP_PIPE_ID nPipeId)
 {
@@ -329,6 +344,7 @@ static AX_S32 sc035hgs_get_isp_default_params(ISP_PIPE_ID nPipeId, AX_SENSOR_DEF
 
     memset(ptDftParam, 0, sizeof(AX_SENSOR_DEFAULT_PARAM_T));
     AX_SENSOR_SET_DEFAULT_LINEAR_PARAM();
+    ptDftParam->ptScene = &gSc035hgsSceneParam;
     ptDftParam->ptDehaze = AX_NULL;
 
     return AX_SNS_SUCCESS;

@@ -32,13 +32,18 @@
 #define SC035HGS_HEIGHT         480
 #define SC035HGS_STRIDE         640
 #define SC035HGS_MAX_CAMERAS    2
-#define SC035HGS_DEFAULT_FPS    120.0f
+#define SC035HGS_DEFAULT_FPS    30.0f
 #define SC035HGS_DEFAULT_RATE   540
 #define SC035HGS_IVPS_CHN       0
 #define SC035HGS_IVPS_FMT       AX_FORMAT_YUV420_SEMIPLANAR
-#define SC035HGS_DEFAULT_SYNC_US 10000
+#define SC035HGS_DEFAULT_SYNC_US 300000
 #define SC035HGS_MAX_SNS_CLK    8
 #define SC035HGS_1LANE_SETTING_MASTER 5
+#define SC035HGS_VIN_CHN_DEPTH  8
+#define SC035HGS_VIN_SRC_DEPTH  8
+#define SC035HGS_IVPS_FIFO_DEPTH 4
+#define SC035HGS_SYNC_QUEUE_DEFAULT 4
+#define SC035HGS_SYNC_QUEUE_MAX 16
 #define SC035HGS_ALIGN_UP(x, a) (((x) + ((a) - 1)) & ~((a) - 1))
 
 typedef struct {
@@ -50,25 +55,32 @@ typedef struct {
     AX_U32 nMipiRate;
     AX_U32 nVinIvpsMode;
     AX_U32 nSyncPtsUs;
+    AX_U32 nSyncQueueDepth;
     AX_F32 fFps;
 } SAMPLE_SC035HGS_ARGS_T;
 
+typedef struct {
+    AX_VIDEO_FRAME_T tFrames[SC035HGS_SYNC_QUEUE_MAX];
+    AX_U32 nCount;
+} SC035HGS_FRAME_QUEUE_T;
+
 static AX_CAMERA_T gCams[SC035HGS_MAX_CAMERAS];
-static AX_U32 gIvpsGrp[SC035HGS_MAX_CAMERAS] = {0, 2};
+static AX_U32 gIvpsGrp[SC035HGS_MAX_CAMERAS] = {0, 1};
 static volatile AX_BOOL gLoopExit = AX_FALSE;
 static AX_BOOL gSnsClkOpened[SC035HGS_MAX_SNS_CLK] = {AX_FALSE};
-static AX_BOOL gLaneComboSet = AX_FALSE;
-static AX_BOOL gDeferStreamOn = AX_FALSE;
-static AX_BOOL gDeferStartDev = AX_FALSE;
-static AX_BOOL gSkipMipiStart = AX_FALSE;
+
+static AX_U32 sc035hgs_get_ivps_grp_by_pipe(AX_U32 nPipeId)
+{
+    return nPipeId;
+}
 
 static COMMON_SYS_POOL_CFG_T gSc035hgsCommPool[] = {
-    {SC035HGS_WIDTH, SC035HGS_HEIGHT, SC035HGS_STRIDE, AX_FORMAT_YUV420_SEMIPLANAR, 16,
+    {SC035HGS_WIDTH, SC035HGS_HEIGHT, SC035HGS_STRIDE, AX_FORMAT_YUV420_SEMIPLANAR, 64,
      AX_COMPRESS_MODE_NONE, 0},
 };
 
 static COMMON_SYS_POOL_CFG_T gSc035hgsPrivatePool[] = {
-    {SC035HGS_WIDTH, SC035HGS_HEIGHT, SC035HGS_STRIDE, AX_FORMAT_BAYER_RAW_10BPP_PACKED, 16,
+    {SC035HGS_WIDTH, SC035HGS_HEIGHT, SC035HGS_STRIDE, AX_FORMAT_BAYER_RAW_10BPP_PACKED, 64,
      AX_COMPRESS_MODE_NONE, 0},
 };
 
@@ -80,7 +92,8 @@ static AX_VOID sc035hgs_sigint(AX_S32 nSigNo)
 
 static AX_VOID sc035hgs_usage(const AX_CHAR *pName)
 {
-    printf("Usage: %s [-n cam_count] [-b first_cam] [-t seconds] [-d] [-s dump_skip] [-r mipi_rate] [-v vin_ivps_mode] [-p sync_pts_us] [-f fps]\n", pName);
+    printf("Usage: %s [-c cam0|cam1|both] [-n cam_count] [-b first_cam] [-t seconds] [-d] [-s dump_skip] [-r mipi_rate] [-v vin_ivps_mode] [-p sync_pts_us] [-q sync_queue_depth] [-f fps]\n", pName);
+    printf("  -c camera      Select camera: cam0, cam1, both, cam0,cam1 or cam0+cam1.\n");
     printf("  -n cam_count   1 or 2, default 1.\n");
     printf("  -b first_cam   First physical camera index, 0 or 1, default 0.\n");
     printf("  -t seconds     Stop after N seconds, default 0 means run until Ctrl+C.\n");
@@ -88,8 +101,45 @@ static AX_VOID sc035hgs_usage(const AX_CHAR *pName)
     printf("  -s dump_skip   Frames to skip before saving, default 60.\n");
     printf("  -r mipi_rate   MIPI data rate, default %u.\n", SC035HGS_DEFAULT_RATE);
     printf("  -v mode        VIN-IVPS mode, 0:ITP offline VPP, 1:GDC online VPP, 2:ITP online VPP, default 1.\n");
-    printf("  -p sync_pts_us Max PTS delta for dual-camera paired dump, default 10000.\n");
+    printf("  -p sync_pts_us Max PTS delta for dual-camera pairing, default %u.\n", SC035HGS_DEFAULT_SYNC_US);
+    printf("  -q depth       PTS sync queue depth per camera, 1-%u, default %u.\n",
+           SC035HGS_SYNC_QUEUE_MAX, SC035HGS_SYNC_QUEUE_DEFAULT);
     printf("  -f fps         Sensor fps, default %.0f.\n", SC035HGS_DEFAULT_FPS);
+    printf("Examples:\n");
+    printf("  %s -c cam0 -t 8 -d\n", pName);
+    printf("  %s -c cam1 -t 8 -d\n", pName);
+    printf("  %s -c both -t 8 -d\n", pName);
+}
+
+static AX_S32 sc035hgs_parse_camera_select(const AX_CHAR *pSelect,
+                                           SAMPLE_SC035HGS_ARGS_T *pArgs)
+{
+    if (NULL == pSelect || NULL == pArgs) {
+        return -1;
+    }
+
+    if (0 == strcmp(pSelect, "cam0") || 0 == strcmp(pSelect, "0")) {
+        pArgs->nFirstCam = 0;
+        pArgs->nCamCnt = 1;
+        return 0;
+    }
+
+    if (0 == strcmp(pSelect, "cam1") || 0 == strcmp(pSelect, "1")) {
+        pArgs->nFirstCam = 1;
+        pArgs->nCamCnt = 1;
+        return 0;
+    }
+
+    if (0 == strcmp(pSelect, "both") || 0 == strcmp(pSelect, "all") ||
+        0 == strcmp(pSelect, "cam0,cam1") || 0 == strcmp(pSelect, "cam0+cam1") ||
+        0 == strcmp(pSelect, "0,1") || 0 == strcmp(pSelect, "0+1")) {
+        pArgs->nFirstCam = 0;
+        pArgs->nCamCnt = 2;
+        return 0;
+    }
+
+    printf("invalid camera select '%s'\n", pSelect);
+    return -1;
 }
 
 static AX_VOID *sc035hgs_get_frame_addr(const AX_VIDEO_FRAME_T *pFrame, AX_U32 nSize, AX_BOOL *pMapped)
@@ -253,12 +303,21 @@ static AX_S32 sc035hgs_config_camera(AX_CAMERA_T *pCam, AX_U32 nIndex,
 
     pCam->tMipiAttr.nDataRate = pArgs->nMipiRate;
     pCam->tMipiAttr.eLaneNum = AX_MIPI_DATA_LANE_1;
-    pCam->tMipiAttr.nDataLaneMap[0] = (0 == nIndex) ? 0 : -1;
-    pCam->tMipiAttr.nDataLaneMap[1] = -1;
-    pCam->tMipiAttr.nDataLaneMap[2] = (0 == nIndex) ? -1 : 3;
-    pCam->tMipiAttr.nDataLaneMap[3] = -1;
-    pCam->tMipiAttr.nClkLane[0] = (0 == nIndex) ? 1 : -1;
-    pCam->tMipiAttr.nClkLane[1] = (0 == nIndex) ? -1 : 4;
+    if (pArgs->nCamCnt > 1 && 0 == nIndex) {
+        pCam->tMipiAttr.nDataLaneMap[0] = 0;
+        pCam->tMipiAttr.nDataLaneMap[1] = -1;
+        pCam->tMipiAttr.nDataLaneMap[2] = 3;
+        pCam->tMipiAttr.nDataLaneMap[3] = -1;
+        pCam->tMipiAttr.nClkLane[0] = 1;
+        pCam->tMipiAttr.nClkLane[1] = 4;
+    } else {
+        pCam->tMipiAttr.nDataLaneMap[0] = (0 == nIndex) ? 0 : -1;
+        pCam->tMipiAttr.nDataLaneMap[1] = -1;
+        pCam->tMipiAttr.nDataLaneMap[2] = (0 == nIndex) ? -1 : 3;
+        pCam->tMipiAttr.nDataLaneMap[3] = -1;
+        pCam->tMipiAttr.nClkLane[0] = (0 == nIndex) ? 1 : -1;
+        pCam->tMipiAttr.nClkLane[1] = (0 == nIndex) ? -1 : 4;
+    }
     pCam->tSnsClkAttr.nSnsClkIdx = 0;
     pCam->tSnsClkAttr.eSnsClkRate = AX_SNS_CLK_24M;
     pCam->tSnsAttr.fFrameRate = pArgs->fFps;
@@ -283,7 +342,7 @@ static AX_S32 sc035hgs_config_camera(AX_CAMERA_T *pCam, AX_U32 nIndex,
     pCam->tPipeAttr[pCam->nPipeId].eSnsMode = AX_SNS_LINEAR_MODE;
     pCam->tPipeAttr[pCam->nPipeId].bAiIspEnable = AX_FALSE;
     pCam->tChnAttr[AX_VIN_CHN_ID_MAIN].eImgFormat = AX_FORMAT_YUV420_SEMIPLANAR;
-    pCam->tChnAttr[AX_VIN_CHN_ID_MAIN].nDepth = 1;
+    pCam->tChnAttr[AX_VIN_CHN_ID_MAIN].nDepth = SC035HGS_VIN_CHN_DEPTH;
 
     pCam->tDevBindPipe.nNum = 1;
     pCam->tDevBindPipe.nPipeId[0] = pCam->nPipeId;
@@ -308,96 +367,25 @@ static AX_S32 sc035hgs_config_camera(AX_CAMERA_T *pCam, AX_U32 nIndex,
     return 0;
 }
 
-static AX_U32 sc035hgs_find_data_slot(const AX_MIPI_RX_ATTR_T *pMipiAttr, AX_U32 nDefaultSlot)
+static AX_VOID sc035hgs_print_dual_mipi_map(const AX_CAMERA_T *pCamList, AX_U32 nCamCnt)
 {
     AX_U32 i = 0;
-
-    for (i = 0; i < AX_MIPI_LANE_NUM_MAX; i++) {
-        if (pMipiAttr->nDataLaneMap[i] >= 0) {
-            return i;
-        }
-    }
-
-    return nDefaultSlot;
-}
-
-static AX_S8 sc035hgs_find_data_lane(const AX_MIPI_RX_ATTR_T *pMipiAttr, AX_S8 nDefaultLane)
-{
-    AX_U32 i = 0;
-
-    for (i = 0; i < AX_MIPI_LANE_NUM_MAX; i++) {
-        if (pMipiAttr->nDataLaneMap[i] >= 0) {
-            return pMipiAttr->nDataLaneMap[i];
-        }
-    }
-
-    return nDefaultLane;
-}
-
-static AX_U32 sc035hgs_find_clk_slot(const AX_MIPI_RX_ATTR_T *pMipiAttr, AX_U32 nDefaultSlot)
-{
-    AX_U32 i = 0;
-
-    for (i = 0; i < AX_MIPI_CLK_LANE_MAX; i++) {
-        if (pMipiAttr->nClkLane[i] >= 0) {
-            return i;
-        }
-    }
-
-    return nDefaultSlot;
-}
-
-static AX_S8 sc035hgs_find_clk_lane(const AX_MIPI_RX_ATTR_T *pMipiAttr, AX_S8 nDefaultLane)
-{
-    AX_U32 i = 0;
-
-    for (i = 0; i < AX_MIPI_CLK_LANE_MAX; i++) {
-        if (pMipiAttr->nClkLane[i] >= 0) {
-            return pMipiAttr->nClkLane[i];
-        }
-    }
-
-    return nDefaultLane;
-}
-
-static AX_VOID sc035hgs_apply_dual_lane_map(AX_CAMERA_T *pCamList, AX_U32 nCamCnt)
-{
-    AX_S8 nDataLaneMap[AX_MIPI_LANE_NUM_MAX] = {-1, -1, -1, -1};
-    AX_S8 nClkLane[AX_MIPI_CLK_LANE_MAX] = {-1, -1};
-    AX_U32 i = 0;
-    AX_U32 nSharedRx = 0;
 
     if (nCamCnt < 2) {
         return;
     }
 
-    nSharedRx = pCamList[0].nRxDev;
     for (i = 0; i < nCamCnt; i++) {
-        AX_CAMERA_T *pCam = &pCamList[i];
-        AX_BOOL bCam0 = (0 == pCam->nNumber) ? AX_TRUE : AX_FALSE;
-        AX_U32 nDataSlot = sc035hgs_find_data_slot(&pCam->tMipiAttr, bCam0 ? 0 : 2);
-        AX_U32 nClkSlot = sc035hgs_find_clk_slot(&pCam->tMipiAttr, bCam0 ? 0 : 1);
-        AX_S8 nDataLane = sc035hgs_find_data_lane(&pCam->tMipiAttr, bCam0 ? 0 : 3);
-        AX_S8 nClk = sc035hgs_find_clk_lane(&pCam->tMipiAttr, bCam0 ? 1 : 4);
+        const AX_CAMERA_T *pCam = &pCamList[i];
 
-        if (nDataSlot < AX_MIPI_LANE_NUM_MAX) {
-            nDataLaneMap[nDataSlot] = nDataLane;
-        }
-        if (nClkSlot < AX_MIPI_CLK_LANE_MAX) {
-            nClkLane[nClkSlot] = nClk;
-        }
+        printf("SC035HGS cam%u separate mipi: rx=%u data=[%d,%d,%d,%d] clk=[%d,%d] vc=%u dt=0x%x\n",
+               pCam->nNumber, pCam->nRxDev,
+               pCam->tMipiAttr.nDataLaneMap[0], pCam->tMipiAttr.nDataLaneMap[1],
+               pCam->tMipiAttr.nDataLaneMap[2], pCam->tMipiAttr.nDataLaneMap[3],
+               pCam->tMipiAttr.nClkLane[0], pCam->tMipiAttr.nClkLane[1],
+               pCam->tDevAttr.tMipiIntfAttr.szImgVc[0],
+               pCam->tDevAttr.tMipiIntfAttr.szImgDt[0]);
     }
-
-    for (i = 0; i < nCamCnt; i++) {
-        memcpy(pCamList[i].tMipiAttr.nDataLaneMap, nDataLaneMap, sizeof(nDataLaneMap));
-        memcpy(pCamList[i].tMipiAttr.nClkLane, nClkLane, sizeof(nClkLane));
-        pCamList[i].tMipiAttr.eLaneNum = AX_MIPI_DATA_LANE_1;
-        pCamList[i].nRxDev = nSharedRx;
-    }
-
-    printf("SC035HGS dual shared mipi map: data=[%d,%d,%d,%d] clk=[%d,%d] rx=%u\n",
-           nDataLaneMap[0], nDataLaneMap[1], nDataLaneMap[2], nDataLaneMap[3],
-           nClkLane[0], nClkLane[1], nSharedRx);
 }
 
 static AX_BOOL sc035hgs_rx_already_used(const AX_CAMERA_T *pCamList, AX_U32 nCheckCnt,
@@ -458,115 +446,38 @@ static AX_VOID sc035hgs_close_all_sns_clk(AX_VOID)
     }
 }
 
-static AX_S32 sc035hgs_set_mipi_attr(AX_U8 nRxDev, AX_INPUT_MODE_E eInputMode,
-                                     AX_MIPI_RX_ATTR_T *pMipiAttr)
-{
-    AX_S32 ret = 0;
-    AX_MIPI_RX_DEV_T tMipiDev = {0};
-
-    tMipiDev.eInputMode = eInputMode;
-    tMipiDev.eBtClkMode = AX_BT_CLK_MODE_SDR;
-    memcpy(&tMipiDev.tMipiAttr, pMipiAttr, sizeof(AX_MIPI_RX_ATTR_T));
-
-    ret = AX_MIPI_RX_SetAttr(nRxDev, &tMipiDev);
-    if (AX_SUCCESS != ret) {
-        printf("AX_MIPI_RX_SetAttr rx%u failed, ret=0x%x\n", nRxDev, ret);
-        return ret;
-    }
-
-    return AX_SUCCESS;
-}
-
 static AX_S32 sc035hgs_start_mipi(AX_U8 nRxDev, AX_INPUT_MODE_E eInputMode,
                                   AX_MIPI_RX_ATTR_T *pMipiAttr,
                                   AX_LANE_COMBO_MODE_E eLaneComboMode)
 {
     AX_S32 ret = 0;
 
-    if (!gLaneComboSet) {
-        ret = AX_MIPI_RX_SetLaneCombo(eLaneComboMode);
-        if (AX_SUCCESS != ret) {
-            printf("AX_MIPI_RX_SetLaneCombo %d failed, ret=0x%x\n", eLaneComboMode, ret);
-            return ret;
-        }
-        gLaneComboSet = AX_TRUE;
-    }
-
-    ret = sc035hgs_set_mipi_attr(nRxDev, eInputMode, pMipiAttr);
+    ret = COMMON_VIN_StartMipi(nRxDev, eInputMode, pMipiAttr, eLaneComboMode);
     if (AX_SUCCESS != ret) {
-        return ret;
-    }
-
-    ret = AX_MIPI_RX_Reset(nRxDev);
-    if (AX_SUCCESS != ret) {
-        printf("AX_MIPI_RX_Reset rx%u failed, ret=0x%x\n", nRxDev, ret);
-        return ret;
-    }
-
-    ret = AX_MIPI_RX_Start(nRxDev);
-    if (AX_SUCCESS != ret) {
-        printf("AX_MIPI_RX_Start rx%u failed, ret=0x%x\n", nRxDev, ret);
+        printf("COMMON_VIN_StartMipi rx%u failed, ret=0x%x\n", nRxDev, ret);
         return ret;
     }
 
     return AX_SUCCESS;
 }
 
-static AX_S32 sc035hgs_start_mipi_staged(AX_CAMERA_T *pCamList, AX_U32 nCamCnt)
+static AX_VOID sc035hgs_set_pipe_source_depth(AX_U8 nPipeId)
 {
+    AX_VIN_FRAME_SOURCE_ID_E eSrcIds[] = {
+        AX_VIN_FRAME_SOURCE_ID_IFE,
+        AX_VIN_FRAME_SOURCE_ID_ITP,
+        AX_VIN_FRAME_SOURCE_ID_YUV,
+    };
     AX_U32 i = 0;
-    AX_S32 ret = 0;
 
-    if (0 == nCamCnt) {
-        return AX_SUCCESS;
-    }
+    for (i = 0; i < sizeof(eSrcIds) / sizeof(eSrcIds[0]); i++) {
+        AX_S32 ret = AX_VIN_SetPipeSourceDepth(nPipeId, eSrcIds[i], SC035HGS_VIN_SRC_DEPTH);
 
-    ret = AX_MIPI_RX_SetLaneCombo(pCamList[0].eLaneComboMode);
-    if (AX_SUCCESS != ret) {
-        printf("AX_MIPI_RX_SetLaneCombo %d staged failed, ret=0x%x\n",
-               pCamList[0].eLaneComboMode, ret);
-        return ret;
-    }
-    gLaneComboSet = AX_TRUE;
-
-    for (i = 0; i < nCamCnt; i++) {
-        if (sc035hgs_rx_already_used(pCamList, i, pCamList[i].nRxDev)) {
-            continue;
-        }
-
-        ret = sc035hgs_set_mipi_attr(pCamList[i].nRxDev, pCamList[i].eInputMode,
-                                     &pCamList[i].tMipiAttr);
         if (AX_SUCCESS != ret) {
-            return ret;
+            printf("SC035HGS pipe%u SetPipeSourceDepth src=%d depth=%u ret=0x%x\n",
+                   nPipeId, eSrcIds[i], SC035HGS_VIN_SRC_DEPTH, ret);
         }
     }
-
-    for (i = 0; i < nCamCnt; i++) {
-        if (sc035hgs_rx_already_used(pCamList, i, pCamList[i].nRxDev)) {
-            continue;
-        }
-
-        ret = AX_MIPI_RX_Reset(pCamList[i].nRxDev);
-        if (AX_SUCCESS != ret) {
-            printf("AX_MIPI_RX_Reset rx%u staged failed, ret=0x%x\n", pCamList[i].nRxDev, ret);
-            return ret;
-        }
-    }
-
-    for (i = 0; i < nCamCnt; i++) {
-        if (sc035hgs_rx_already_used(pCamList, i, pCamList[i].nRxDev)) {
-            continue;
-        }
-
-        ret = AX_MIPI_RX_Start(pCamList[i].nRxDev);
-        if (AX_SUCCESS != ret) {
-            printf("AX_MIPI_RX_Start rx%u staged failed, ret=0x%x\n", pCamList[i].nRxDev, ret);
-            return ret;
-        }
-        printf("SC035HGS staged start rx%u\n", pCamList[i].nRxDev);
-    }
-
-    return AX_SUCCESS;
 }
 
 static AX_S32 sc035hgs_cam_open_one(AX_CAMERA_T *pCam)
@@ -588,12 +499,10 @@ static AX_S32 sc035hgs_cam_open_one(AX_CAMERA_T *pCam)
         return ret;
     }
 
-    if (!gSkipMipiStart) {
-        ret = sc035hgs_start_mipi(nRxDev, eInputMode, &pCam->tMipiAttr, pCam->eLaneComboMode);
-        if (AX_SUCCESS != ret) {
-            printf("sc035hgs_start_mipi rx%u failed, ret=0x%x\n", nRxDev, ret);
-            return ret;
-        }
+    ret = sc035hgs_start_mipi(nRxDev, eInputMode, &pCam->tMipiAttr, pCam->eLaneComboMode);
+    if (AX_SUCCESS != ret) {
+        printf("sc035hgs_start_mipi rx%u failed, ret=0x%x\n", nRxDev, ret);
+        return ret;
     }
 
     ret = COMMON_VIN_CreateDev(nDevId, nRxDev, &pCam->tDevAttr, &pCam->tDevBindPipe);
@@ -612,6 +521,7 @@ static AX_S32 sc035hgs_cam_open_one(AX_CAMERA_T *pCam)
             printf("COMMON_VIN_SetPipeAttr pipe%u failed, ret=0x%x\n", nPipeId, ret);
             return ret;
         }
+        sc035hgs_set_pipe_source_depth(nPipeId);
 
         if (pCam->bRegisterSns) {
             ret = COMMON_ISP_RegisterSns(nPipeId, nDevId, pCam->eBusType,
@@ -658,15 +568,13 @@ static AX_S32 sc035hgs_cam_open_one(AX_CAMERA_T *pCam)
         sc035hgs_apply_mono_iq(nPipeId);
     }
 
-    if (!gDeferStartDev) {
-        ret = COMMON_VIN_StartDev(nDevId, pCam->bEnableDev, &pCam->tDevAttr);
-        if (AX_SUCCESS != ret) {
-            printf("COMMON_VIN_StartDev dev%u failed, ret=0x%x\n", nDevId, ret);
-            return ret;
-        }
+    ret = COMMON_VIN_StartDev(nDevId, pCam->bEnableDev, &pCam->tDevAttr);
+    if (AX_SUCCESS != ret) {
+        printf("COMMON_VIN_StartDev dev%u failed, ret=0x%x\n", nDevId, ret);
+        return ret;
     }
 
-    if (pCam->bRegisterSns && pCam->bEnableDev && !gDeferStreamOn) {
+    if (pCam->bRegisterSns && pCam->bEnableDev) {
         for (i = 0; i < pCam->tDevBindPipe.nNum; i++) {
             AX_U8 nPipeId = pCam->tDevBindPipe.nPipeId[i];
 
@@ -722,19 +630,6 @@ static AX_S32 sc035hgs_cam_open(AX_CAMERA_T *pCamList, AX_U32 nCamCnt)
 {
     AX_U32 i = 0;
     AX_S32 ret = 0;
-    AX_BOOL bDeferStreamOn = (nCamCnt > 1) ? AX_TRUE : AX_FALSE;
-    AX_BOOL bDeferStartDev = (nCamCnt > 1) ? AX_TRUE : AX_FALSE;
-
-    gDeferStreamOn = bDeferStreamOn;
-    gDeferStartDev = bDeferStartDev;
-    if (nCamCnt > 1) {
-        ret = sc035hgs_start_mipi_staged(pCamList, nCamCnt);
-        if (AX_SUCCESS != ret) {
-            gDeferStreamOn = AX_FALSE;
-            return ret;
-        }
-        gSkipMipiStart = AX_TRUE;
-    }
 
     for (i = 0; i < nCamCnt; i++) {
         ret = sc035hgs_cam_open_one(&pCamList[i]);
@@ -745,39 +640,6 @@ static AX_S32 sc035hgs_cam_open(AX_CAMERA_T *pCamList, AX_U32 nCamCnt)
             }
             sc035hgs_close_all_sns_clk();
             return ret;
-        }
-    }
-    gDeferStreamOn = AX_FALSE;
-    gDeferStartDev = AX_FALSE;
-    gSkipMipiStart = AX_FALSE;
-
-    if (bDeferStartDev) {
-        for (i = 0; i < nCamCnt; i++) {
-            ret = COMMON_VIN_StartDev(pCamList[i].nDevId, pCamList[i].bEnableDev,
-                                      &pCamList[i].tDevAttr);
-            if (AX_SUCCESS != ret) {
-                printf("COMMON_VIN_StartDev dev%u deferred failed, ret=0x%x\n",
-                       pCamList[i].nDevId, ret);
-                return ret;
-            }
-            printf("SC035HGS deferred start dev%u\n", pCamList[i].nDevId);
-        }
-    }
-
-    if (bDeferStreamOn) {
-        for (i = 0; i < nCamCnt; i++) {
-            AX_U32 j = 0;
-
-            for (j = 0; j < pCamList[i].tDevBindPipe.nNum; j++) {
-                AX_U8 nPipeId = pCamList[i].tDevBindPipe.nPipeId[j];
-
-                ret = AX_ISP_StreamOn(nPipeId);
-                if (AX_SUCCESS != ret) {
-                    printf("AX_ISP_StreamOn pipe%u deferred failed, ret=0x%x\n", nPipeId, ret);
-                    return ret;
-                }
-                printf("SC035HGS deferred stream on pipe%u\n", nPipeId);
-            }
         }
     }
 
@@ -807,7 +669,7 @@ static AX_S32 sc035hgs_ivps_init_one(AX_U32 nGrpId)
     AX_IVPS_GRP_ATTR_T tGrpAttr = {0};
     AX_IVPS_PIPELINE_ATTR_T tPipelineAttr = {0};
 
-    tGrpAttr.nInFifoDepth = 2;
+    tGrpAttr.nInFifoDepth = SC035HGS_IVPS_FIFO_DEPTH;
     tGrpAttr.ePipeline = AX_IVPS_PIPELINE_DEFAULT;
     ret = AX_IVPS_CreateGrp(nGrpId, &tGrpAttr);
     if (AX_SUCCESS != ret) {
@@ -816,7 +678,7 @@ static AX_S32 sc035hgs_ivps_init_one(AX_U32 nGrpId)
     }
 
     tPipelineAttr.nOutChnNum = 1;
-    tPipelineAttr.nOutFifoDepth[SC035HGS_IVPS_CHN] = 2;
+    tPipelineAttr.nOutFifoDepth[SC035HGS_IVPS_CHN] = SC035HGS_IVPS_FIFO_DEPTH;
 
     tPipelineAttr.tFilter[0][0].bEngage = AX_TRUE;
     tPipelineAttr.tFilter[0][0].eEngine = AX_IVPS_ENGINE_VPP;
@@ -908,6 +770,107 @@ static AX_U64 sc035hgs_abs_diff_u64(AX_U64 a, AX_U64 b)
     return (a > b) ? (a - b) : (b - a);
 }
 
+static AX_VIDEO_FRAME_T *sc035hgs_queue_at(SC035HGS_FRAME_QUEUE_T *pQueue, AX_U32 nIndex)
+{
+    if (NULL == pQueue || nIndex >= pQueue->nCount) {
+        return NULL;
+    }
+
+    return &pQueue->tFrames[nIndex];
+}
+
+static AX_VOID sc035hgs_queue_remove(SC035HGS_FRAME_QUEUE_T *pQueue, AX_U32 nIndex)
+{
+    AX_U32 i = 0;
+
+    if (NULL == pQueue || nIndex >= pQueue->nCount) {
+        return;
+    }
+
+    for (i = nIndex; i + 1 < pQueue->nCount; i++) {
+        pQueue->tFrames[i] = pQueue->tFrames[i + 1];
+    }
+    pQueue->nCount--;
+    memset(&pQueue->tFrames[pQueue->nCount], 0, sizeof(pQueue->tFrames[pQueue->nCount]));
+}
+
+static AX_VOID sc035hgs_queue_release_one(SC035HGS_FRAME_QUEUE_T *pQueue, AX_U32 nGrp,
+                                          AX_U32 nIndex)
+{
+    AX_VIDEO_FRAME_T *pFrame = sc035hgs_queue_at(pQueue, nIndex);
+
+    if (NULL == pFrame) {
+        return;
+    }
+
+    AX_IVPS_ReleaseChnFrame(nGrp, SC035HGS_IVPS_CHN, pFrame);
+    sc035hgs_queue_remove(pQueue, nIndex);
+}
+
+static AX_VOID sc035hgs_queue_release_all(SC035HGS_FRAME_QUEUE_T *pQueue, AX_U32 nGrp)
+{
+    if (NULL == pQueue) {
+        return;
+    }
+
+    while (pQueue->nCount > 0) {
+        sc035hgs_queue_release_one(pQueue, nGrp, 0);
+    }
+}
+
+static AX_S32 sc035hgs_queue_push(SC035HGS_FRAME_QUEUE_T *pQueue,
+                                  const AX_VIDEO_FRAME_T *pFrame)
+{
+    if (NULL == pQueue || NULL == pFrame || pQueue->nCount >= SC035HGS_SYNC_QUEUE_MAX) {
+        return -1;
+    }
+
+    pQueue->tFrames[pQueue->nCount] = *pFrame;
+    pQueue->nCount++;
+    return 0;
+}
+
+static AX_BOOL sc035hgs_find_best_pts_pair(SC035HGS_FRAME_QUEUE_T *pQueue0,
+                                           SC035HGS_FRAME_QUEUE_T *pQueue1,
+                                           AX_U32 *pIdx0, AX_U32 *pIdx1,
+                                           AX_U64 *pDelta)
+{
+    AX_U32 i = 0;
+    AX_U32 j = 0;
+    AX_U64 nBest = (AX_U64)-1;
+    AX_U32 nBest0 = 0;
+    AX_U32 nBest1 = 0;
+
+    if (NULL == pQueue0 || NULL == pQueue1 || 0 == pQueue0->nCount || 0 == pQueue1->nCount) {
+        return AX_FALSE;
+    }
+
+    for (i = 0; i < pQueue0->nCount; i++) {
+        for (j = 0; j < pQueue1->nCount; j++) {
+            AX_U64 nDelta = sc035hgs_abs_diff_u64(pQueue0->tFrames[i].u64PTS,
+                                                  pQueue1->tFrames[j].u64PTS);
+
+            if (nDelta < nBest) {
+                nBest = nDelta;
+                nBest0 = i;
+                nBest1 = j;
+            }
+        }
+    }
+
+    if (pIdx0) {
+        *pIdx0 = nBest0;
+    }
+    if (pIdx1) {
+        *pIdx1 = nBest1;
+    }
+    if (pDelta) {
+        *pDelta = nBest;
+    }
+
+    return AX_TRUE;
+}
+
 static AX_S32 sc035hgs_link_vin_to_ivps(AX_U32 nCamCnt)
 {
     AX_MOD_INFO_T tSrcMod = {0};
@@ -969,88 +932,147 @@ static AX_VOID sc035hgs_unlink_vin_to_ivps(AX_U32 nCamCnt)
 
 static AX_S32 sc035hgs_drain_loop(const SAMPLE_SC035HGS_ARGS_T *pArgs)
 {
-    AX_VIDEO_FRAME_T tFrames[SC035HGS_MAX_CAMERAS];
-    AX_BOOL bHasFrame[SC035HGS_MAX_CAMERAS] = {AX_FALSE};
+    SC035HGS_FRAME_QUEUE_T tQueues[SC035HGS_MAX_CAMERAS];
+    AX_VIDEO_FRAME_T tFrame;
     AX_U64 nFrameCnt[SC035HGS_MAX_CAMERAS] = {0};
+    AX_U64 nDropCnt[SC035HGS_MAX_CAMERAS] = {0};
     AX_BOOL bDumped[SC035HGS_MAX_CAMERAS] = {AX_FALSE};
     AX_U64 nStart = (AX_U64)time(NULL);
     AX_U32 nFailCnt[SC035HGS_MAX_CAMERAS] = {0};
     AX_U64 nPairCnt = 0;
+    AX_U64 nLastPairDelta = 0;
+    AX_U64 nMinPairDelta = (AX_U64)-1;
+    AX_U64 nMaxPairDelta = 0;
+    AX_U64 nSumPairDelta = 0;
     AX_U64 nLastPrintCnt = 0;
+    AX_U32 nPairReadyDepth = 1;
     AX_U32 i = 0;
     AX_S32 ret = 0;
 
-    memset(tFrames, 0, sizeof(tFrames));
+    memset(tQueues, 0, sizeof(tQueues));
+    memset(&tFrame, 0, sizeof(tFrame));
+    if (pArgs->nSyncQueueDepth > 1) {
+        nPairReadyDepth = 2;
+    }
 
     while (!gLoopExit) {
         if (pArgs->nRunSeconds && ((AX_U64)time(NULL) - nStart >= pArgs->nRunSeconds)) {
             break;
         }
 
-        for (i = 0; i < pArgs->nCamCnt; i++) {
-            if (bHasFrame[i]) {
-                continue;
-            }
-
-            memset(&tFrames[i], 0, sizeof(tFrames[i]));
-            ret = AX_IVPS_GetChnFrame(gIvpsGrp[i], SC035HGS_IVPS_CHN, &tFrames[i], 1000);
-            if (AX_SUCCESS == ret) {
-                nFailCnt[i] = 0;
-                nFrameCnt[i]++;
-                bHasFrame[i] = AX_TRUE;
-            } else {
-                nFailCnt[i]++;
-                if (nFailCnt[i] <= 5 || (nFailCnt[i] % 30) == 0) {
-                    printf("SC035HGS grp%u AX_IVPS_GetChnFrame failed, ret=0x%x, cnt=%u\n",
-                           gIvpsGrp[i], ret, nFailCnt[i]);
-                }
-                usleep(10 * 1000);
-            }
-        }
-
         if (1 == pArgs->nCamCnt) {
-            if (bHasFrame[0]) {
+            memset(&tFrame, 0, sizeof(tFrame));
+            ret = AX_IVPS_GetChnFrame(gIvpsGrp[0], SC035HGS_IVPS_CHN, &tFrame, 1000);
+            if (AX_SUCCESS == ret) {
+                nFailCnt[0] = 0;
+                nFrameCnt[0]++;
                 if (pArgs->bDumpOnce && !bDumped[0] && nFrameCnt[0] > pArgs->nDumpSkip) {
-                    if (0 == sc035hgs_save_y8(gCams[0].nPipeId, &tFrames[0])) {
+                    if (0 == sc035hgs_save_y8(gCams[0].nPipeId, &tFrame)) {
                         bDumped[0] = AX_TRUE;
                     }
                 }
-                AX_IVPS_ReleaseChnFrame(gIvpsGrp[0], SC035HGS_IVPS_CHN, &tFrames[0]);
-                bHasFrame[0] = AX_FALSE;
+                AX_IVPS_ReleaseChnFrame(gIvpsGrp[0], SC035HGS_IVPS_CHN, &tFrame);
+            } else {
+                nFailCnt[0]++;
+                if (nFailCnt[0] <= 5 || (nFailCnt[0] % 30) == 0) {
+                    printf("SC035HGS grp%u AX_IVPS_GetChnFrame failed, ret=0x%x, cnt=%u\n",
+                           gIvpsGrp[0], ret, nFailCnt[0]);
+                }
+                usleep(10 * 1000);
             }
-        } else if (bHasFrame[0] && bHasFrame[1]) {
-            AX_U64 nDelta = sc035hgs_abs_diff_u64(tFrames[0].u64PTS, tFrames[1].u64PTS);
+        } else {
+            for (i = 0; i < pArgs->nCamCnt; i++) {
+                AX_U32 nFetchCnt = 0;
 
-            if (nDelta <= pArgs->nSyncPtsUs) {
+                while (tQueues[i].nCount < pArgs->nSyncQueueDepth &&
+                       nFetchCnt < pArgs->nSyncQueueDepth) {
+                    memset(&tFrame, 0, sizeof(tFrame));
+                    ret = AX_IVPS_GetChnFrame(gIvpsGrp[i], SC035HGS_IVPS_CHN, &tFrame,
+                                              (0 == nFetchCnt) ? 100 : 0);
+                    if (AX_SUCCESS != ret) {
+                        if (0 == nFetchCnt && 0 == tQueues[i].nCount) {
+                            nFailCnt[i]++;
+                            if (nFailCnt[i] <= 5 || (nFailCnt[i] % 30) == 0) {
+                                printf("SC035HGS grp%u AX_IVPS_GetChnFrame failed, ret=0x%x, cnt=%u\n",
+                                       gIvpsGrp[i], ret, nFailCnt[i]);
+                            }
+                        }
+                        break;
+                    }
+
+                    nFailCnt[i] = 0;
+                    nFrameCnt[i]++;
+                    if (0 != sc035hgs_queue_push(&tQueues[i], &tFrame)) {
+                        AX_IVPS_ReleaseChnFrame(gIvpsGrp[i], SC035HGS_IVPS_CHN, &tFrame);
+                        nDropCnt[i]++;
+                        break;
+                    }
+                    nFetchCnt++;
+                }
+            }
+
+            while (tQueues[0].nCount >= nPairReadyDepth &&
+                   tQueues[1].nCount >= nPairReadyDepth) {
+                AX_U32 nIdx0 = 0;
+                AX_U32 nIdx1 = 0;
+                AX_U64 nDelta = 0;
+                AX_VIDEO_FRAME_T *pFrame0 = NULL;
+                AX_VIDEO_FRAME_T *pFrame1 = NULL;
+
+                if (!sc035hgs_find_best_pts_pair(&tQueues[0], &tQueues[1],
+                                                 &nIdx0, &nIdx1, &nDelta)) {
+                    break;
+                }
+
+                if (nDelta > pArgs->nSyncPtsUs) {
+                    AX_U32 nDrop = (tQueues[0].tFrames[0].u64PTS <= tQueues[1].tFrames[0].u64PTS) ? 0 : 1;
+
+                    nDropCnt[nDrop]++;
+                    if (nDropCnt[nDrop] <= 5 || (nDropCnt[nDrop] % 30) == 0) {
+                        printf("SC035HGS drop old grp%u frame: q0=%u q1=%u pts0=%llu pts1=%llu best_delta=%llu us drop=%llu\n",
+                               gIvpsGrp[nDrop], tQueues[0].nCount, tQueues[1].nCount,
+                               (unsigned long long)tQueues[0].tFrames[0].u64PTS,
+                               (unsigned long long)tQueues[1].tFrames[0].u64PTS,
+                               (unsigned long long)nDelta,
+                               (unsigned long long)nDropCnt[nDrop]);
+                    }
+                    sc035hgs_queue_release_one(&tQueues[nDrop], gIvpsGrp[nDrop], 0);
+                    continue;
+                }
+
+                pFrame0 = sc035hgs_queue_at(&tQueues[0], nIdx0);
+                pFrame1 = sc035hgs_queue_at(&tQueues[1], nIdx1);
+                if (NULL == pFrame0 || NULL == pFrame1) {
+                    break;
+                }
+
                 nPairCnt++;
+                nLastPairDelta = nDelta;
+                nSumPairDelta += nDelta;
+                if (nDelta < nMinPairDelta) {
+                    nMinPairDelta = nDelta;
+                }
+                if (nDelta > nMaxPairDelta) {
+                    nMaxPairDelta = nDelta;
+                }
+
                 if (pArgs->bDumpOnce && (!bDumped[0] || !bDumped[1]) && nPairCnt > pArgs->nDumpSkip) {
-                    AX_S32 ret0 = sc035hgs_save_y8(gCams[0].nPipeId, &tFrames[0]);
-                    AX_S32 ret1 = sc035hgs_save_y8(gCams[1].nPipeId, &tFrames[1]);
+                    AX_S32 ret0 = sc035hgs_save_y8(gCams[0].nPipeId, pFrame0);
+                    AX_S32 ret1 = sc035hgs_save_y8(gCams[1].nPipeId, pFrame1);
                     if (0 == ret0 && 0 == ret1) {
                         bDumped[0] = AX_TRUE;
                         bDumped[1] = AX_TRUE;
                         printf("SC035HGS saved synced pair: pts0=%llu pts1=%llu delta=%llu us seq0=%llu seq1=%llu\n",
-                               (unsigned long long)tFrames[0].u64PTS,
-                               (unsigned long long)tFrames[1].u64PTS,
+                               (unsigned long long)pFrame0->u64PTS,
+                               (unsigned long long)pFrame1->u64PTS,
                                (unsigned long long)nDelta,
-                               (unsigned long long)tFrames[0].u64SeqNum,
-                               (unsigned long long)tFrames[1].u64SeqNum);
+                               (unsigned long long)pFrame0->u64SeqNum,
+                               (unsigned long long)pFrame1->u64SeqNum);
                     }
                 }
 
-                AX_IVPS_ReleaseChnFrame(gIvpsGrp[0], SC035HGS_IVPS_CHN, &tFrames[0]);
-                AX_IVPS_ReleaseChnFrame(gIvpsGrp[1], SC035HGS_IVPS_CHN, &tFrames[1]);
-                bHasFrame[0] = AX_FALSE;
-                bHasFrame[1] = AX_FALSE;
-            } else {
-                AX_U32 nOld = (tFrames[0].u64PTS < tFrames[1].u64PTS) ? 0 : 1;
-                printf("SC035HGS drop unsynced grp%u frame: pts0=%llu pts1=%llu delta=%llu us\n",
-                       nOld,
-                       (unsigned long long)tFrames[0].u64PTS,
-                       (unsigned long long)tFrames[1].u64PTS,
-                       (unsigned long long)nDelta);
-                AX_IVPS_ReleaseChnFrame(gIvpsGrp[nOld], SC035HGS_IVPS_CHN, &tFrames[nOld]);
-                bHasFrame[nOld] = AX_FALSE;
+                sc035hgs_queue_release_one(&tQueues[0], gIvpsGrp[0], nIdx0);
+                sc035hgs_queue_release_one(&tQueues[1], gIvpsGrp[1], nIdx1);
             }
         }
 
@@ -1061,17 +1083,22 @@ static AX_S32 sc035hgs_drain_loop(const SAMPLE_SC035HGS_ARGS_T *pArgs)
                 printf(" grp%u=%llu", gIvpsGrp[i], (unsigned long long)nFrameCnt[i]);
             }
             if (pArgs->nCamCnt > 1) {
-                printf(" synced_pairs=%llu", (unsigned long long)nPairCnt);
+                printf(" synced_pairs=%llu pts_delta_us[last/min/avg/max]=%llu/%llu/%llu/%llu q=%u/%u drop=%llu/%llu",
+                       (unsigned long long)nPairCnt,
+                       (unsigned long long)nLastPairDelta,
+                       (unsigned long long)(nMinPairDelta == (AX_U64)-1 ? 0 : nMinPairDelta),
+                       (unsigned long long)(nPairCnt ? (nSumPairDelta / nPairCnt) : 0),
+                       (unsigned long long)nMaxPairDelta,
+                       tQueues[0].nCount, tQueues[1].nCount,
+                       (unsigned long long)nDropCnt[0],
+                       (unsigned long long)nDropCnt[1]);
             }
             printf("\n");
         }
     }
 
     for (i = 0; i < pArgs->nCamCnt; i++) {
-        if (bHasFrame[i]) {
-            AX_IVPS_ReleaseChnFrame(gIvpsGrp[i], SC035HGS_IVPS_CHN, &tFrames[i]);
-            bHasFrame[i] = AX_FALSE;
-        }
+        sc035hgs_queue_release_all(&tQueues[i], gIvpsGrp[i]);
     }
 
     return 0;
@@ -1089,10 +1116,17 @@ static AX_S32 sc035hgs_parse_args(AX_S32 argc, AX_CHAR *argv[], SAMPLE_SC035HGS_
     pArgs->nMipiRate = SC035HGS_DEFAULT_RATE;
     pArgs->nVinIvpsMode = AX_GDC_ONLINE_VPP;
     pArgs->nSyncPtsUs = SC035HGS_DEFAULT_SYNC_US;
+    pArgs->nSyncQueueDepth = SC035HGS_SYNC_QUEUE_DEFAULT;
     pArgs->fFps = SC035HGS_DEFAULT_FPS;
 
-    while ((c = getopt(argc, argv, "n:b:t:ds:r:v:p:f:h")) != -1) {
+    while ((c = getopt(argc, argv, "c:n:b:t:ds:r:v:p:q:f:h")) != -1) {
         switch (c) {
+        case 'c':
+            if (0 != sc035hgs_parse_camera_select(optarg, pArgs)) {
+                sc035hgs_usage(argv[0]);
+                return -1;
+            }
+            break;
         case 'n':
             pArgs->nCamCnt = (AX_U32)strtoul(optarg, NULL, 0);
             break;
@@ -1117,6 +1151,9 @@ static AX_S32 sc035hgs_parse_args(AX_S32 argc, AX_CHAR *argv[], SAMPLE_SC035HGS_
         case 'p':
             pArgs->nSyncPtsUs = (AX_U32)strtoul(optarg, NULL, 0);
             break;
+        case 'q':
+            pArgs->nSyncQueueDepth = (AX_U32)strtoul(optarg, NULL, 0);
+            break;
         case 'f':
             pArgs->fFps = (AX_F32)strtod(optarg, NULL);
             break;
@@ -1140,6 +1177,10 @@ static AX_S32 sc035hgs_parse_args(AX_S32 argc, AX_CHAR *argv[], SAMPLE_SC035HGS_
         printf("invalid VIN-IVPS mode %u\n", pArgs->nVinIvpsMode);
         return -1;
     }
+    if (pArgs->nSyncQueueDepth < 1 || pArgs->nSyncQueueDepth > SC035HGS_SYNC_QUEUE_MAX) {
+        printf("invalid sync queue depth %u\n", pArgs->nSyncQueueDepth);
+        return -1;
+    }
 
     return 0;
 }
@@ -1155,6 +1196,7 @@ int main(int argc, char *argv[])
     AX_BOOL bCamOpened = AX_FALSE;
     AX_BOOL bIvpsInited = AX_FALSE;
     AX_BOOL bVinIvpsLinked = AX_FALSE;
+    AX_BOOL bNtInited = AX_FALSE;
     AX_S32 ret = 0;
     AX_U32 i = 0;
 
@@ -1175,8 +1217,9 @@ int main(int argc, char *argv[])
         if (0 != sc035hgs_config_camera(&gCams[i], tArgs.nFirstCam + i, &tArgs)) {
             return -1;
         }
+        gIvpsGrp[i] = sc035hgs_get_ivps_grp_by_pipe(gCams[i].nPipeId);
     }
-    sc035hgs_apply_dual_lane_map(gCams, tArgs.nCamCnt);
+    sc035hgs_print_dual_mipi_map(gCams, tArgs.nCamCnt);
 
     ret = COMMON_SYS_Init(&tCommonArgs);
     if (ret) {
@@ -1185,8 +1228,8 @@ int main(int argc, char *argv[])
     }
     bSysInited = AX_TRUE;
 
-    printf("SC035HGS VIN-IVPS mode: %u, sync_pts_us=%u\n",
-           tArgs.nVinIvpsMode, tArgs.nSyncPtsUs);
+    printf("SC035HGS VIN-IVPS mode: %u, sync_pts_us=%u, sync_queue_depth=%u\n",
+           tArgs.nVinIvpsMode, tArgs.nSyncPtsUs, tArgs.nSyncQueueDepth);
     for (i = 0; i < tArgs.nCamCnt; i++) {
         ret = AX_SYS_SetVINIVPSMode(gCams[i].nPipeId, gIvpsGrp[i],
                                     (AX_VIN_IVPS_MODE_E)tArgs.nVinIvpsMode);
@@ -1235,6 +1278,7 @@ int main(int argc, char *argv[])
         COMM_ISP_PRT("COMMON_NT_Init fail, ret:0x%x", ret);
         goto EXIT;
     }
+    bNtInited = AX_TRUE;
     /* update pipe attribute */
     for (int i = 0; i < tCommonArgs.nCamCnt; i++) {
         for (int j = 0; j < gCams[i].tDevBindPipe.nNum; j++) {
@@ -1251,6 +1295,10 @@ int main(int argc, char *argv[])
     sc035hgs_drain_loop(&tArgs);
 
 EXIT:
+    if (bNtInited) {
+        COMMON_NT_DeInit();
+        bNtInited = AX_FALSE;
+    }
     if (bVinIvpsLinked) {
         sc035hgs_unlink_vin_to_ivps(tArgs.nCamCnt);
         bVinIvpsLinked = AX_FALSE;
