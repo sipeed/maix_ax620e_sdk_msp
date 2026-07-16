@@ -27,6 +27,7 @@
 #include "common_sys.h"
 #include "common_vin.h"
 #include "common_nt.h"
+#include "mipi_switch.h"
 
 #define SC035HGS_WIDTH          640
 #define SC035HGS_HEIGHT         480
@@ -39,6 +40,7 @@
 #define SC035HGS_DEFAULT_SYNC_US 300000
 #define SC035HGS_MAX_SNS_CLK    8
 #define SC035HGS_1LANE_SETTING_MASTER 5
+#define SC035HGS_1LANE_SETTING_TRIG   8
 #define SC035HGS_VIN_CHN_DEPTH  8
 #define SC035HGS_VIN_SRC_DEPTH  8
 #define SC035HGS_IVPS_FIFO_DEPTH 4
@@ -57,6 +59,7 @@ typedef struct {
     AX_U32 nSyncPtsUs;
     AX_U32 nSyncQueueDepth;
     AX_F32 fFps;
+    AX_BOOL bHwSync;
 } SAMPLE_SC035HGS_ARGS_T;
 
 typedef struct {
@@ -92,7 +95,7 @@ static AX_VOID sc035hgs_sigint(AX_S32 nSigNo)
 
 static AX_VOID sc035hgs_usage(const AX_CHAR *pName)
 {
-    printf("Usage: %s [-c cam0|cam1|both] [-n cam_count] [-b first_cam] [-t seconds] [-d] [-s dump_skip] [-r mipi_rate] [-v vin_ivps_mode] [-p sync_pts_us] [-q sync_queue_depth] [-f fps]\n", pName);
+    printf("Usage: %s [-c cam0|cam1|both] [-n cam_count] [-b first_cam] [-t seconds] [-d] [-s dump_skip] [-r mipi_rate] [-v vin_ivps_mode] [-p sync_pts_us] [-q sync_queue_depth] [-f fps] [-y]\n", pName);
     printf("  -c camera      Select camera: cam0, cam1, both, cam0,cam1 or cam0+cam1.\n");
     printf("  -n cam_count   1 or 2, default 1.\n");
     printf("  -b first_cam   First physical camera index, 0 or 1, default 0.\n");
@@ -105,10 +108,13 @@ static AX_VOID sc035hgs_usage(const AX_CHAR *pName)
     printf("  -q depth       PTS sync queue depth per camera, 1-%u, default %u.\n",
            SC035HGS_SYNC_QUEUE_MAX, SC035HGS_SYNC_QUEUE_DEFAULT);
     printf("  -f fps         Sensor fps, default %.0f.\n", SC035HGS_DEFAULT_FPS);
+    printf("  -y             Enable optional SC035HGS TRIG mode and AX630C mipi_switch FSYNC output.\n");
+    printf("                 Current board ties both TRIG pins to GPIO1-A2 / SEN_FLASH_D4; run devmem 0x02304084 32 0x00040083 first.\n");
     printf("Examples:\n");
     printf("  %s -c cam0 -t 8 -d\n", pName);
     printf("  %s -c cam1 -t 8 -d\n", pName);
     printf("  %s -c both -t 8 -d\n", pName);
+    printf("  %s -c both -t 8 -d -y\n", pName);
 }
 
 static AX_S32 sc035hgs_parse_camera_select(const AX_CHAR *pSelect,
@@ -325,7 +331,7 @@ static AX_S32 sc035hgs_config_camera(AX_CAMERA_T *pCam, AX_U32 nIndex,
     pCam->tSnsAttr.eRawType = AX_RT_RAW10;
     pCam->tSnsAttr.eBayerPattern = AX_BP_MONO;
     pCam->tSnsAttr.eMasterSlaveSel = AX_SNS_MASTER;
-    pCam->tSnsAttr.nSettingIndex = SC035HGS_1LANE_SETTING_MASTER;
+    pCam->tSnsAttr.nSettingIndex = pArgs->bHwSync ? SC035HGS_1LANE_SETTING_TRIG : SC035HGS_1LANE_SETTING_MASTER;
     pCam->tDevAttr.eSnsMode = AX_SNS_LINEAR_MODE;
     pCam->tDevAttr.ePixelFmt = AX_FORMAT_BAYER_RAW_10BPP_PACKED;
     pCam->tDevAttr.eBayerPattern = AX_BP_MONO;
@@ -589,6 +595,62 @@ static AX_S32 sc035hgs_cam_open_one(AX_CAMERA_T *pCam)
     pCam->bOpen = AX_TRUE;
     printf("SC035HGS camera %u opened\n", pCam->nNumber);
     return AX_SUCCESS;
+}
+
+static AX_S32 sc035hgs_hw_sync_start(const AX_CAMERA_T *pCamList, const SAMPLE_SC035HGS_ARGS_T *pArgs)
+{
+    AX_SWITCH_INFO_T tSwitchInfo = {0};
+    AX_S32 ret = 0;
+    AX_U32 i = 0;
+
+    if (NULL == pCamList || NULL == pArgs || !pArgs->bHwSync) {
+        return AX_SUCCESS;
+    }
+
+    system("devmem 0x02304084 32 0x00040083"); // Enable AX630C mipi_switch FSYNC output
+
+    tSwitchInfo.nFps = (AX_S32)(pArgs->fFps + 0.5f);
+    tSwitchInfo.nPipeNum = 1;
+    tSwitchInfo.eWorkMode = AX_MIPI_SWITCH_STAY_LOW;
+
+    for (i = 0; i < tSwitchInfo.nPipeNum && i < AX_MIPI_SWITCH_PIPE_NUM; i++) {
+        tSwitchInfo.tSnsInfo[i].nSnsId = i + 1;
+        tSwitchInfo.tSnsInfo[i].nPipeId = pCamList[i].nPipeId;
+        tSwitchInfo.tSnsInfo[i].eLensType = (0 == i) ? AX_LENS_TYPE_WIDE_FIELD : AX_LENS_TYPE_LONG_FOCAL;
+        tSwitchInfo.tSnsInfo[i].eWorkMode = AX_MIPI_SWITCH_STAY_LOW;
+        tSwitchInfo.tSnsInfo[i].eVsyncType = AX_MIPI_SWITCH_FSYNC_FLASH;
+    }
+
+    printf("SC035HGS hw-sync start: fps=%d pipe_num=%d vsync_type=FSYNC_FLASH\n",
+           tSwitchInfo.nFps, tSwitchInfo.nPipeNum);
+
+    ret = ax_mipi_switch_init(&tSwitchInfo);
+    if (0 != ret) {
+        printf("SC035HGS ax_mipi_switch_init failed, ret=0x%x\n", ret);
+        return ret;
+    }
+
+    ret = ax_mipi_switch_start();
+    if (0 != ret) {
+        printf("SC035HGS ax_mipi_switch_start failed, ret=0x%x\n", ret);
+        return ret;
+    }
+
+    return AX_SUCCESS;
+}
+
+static AX_VOID sc035hgs_hw_sync_stop(AX_BOOL bHwSyncStarted)
+{
+    AX_S32 ret = 0;
+
+    if (!bHwSyncStarted) {
+        return;
+    }
+
+    ret = ax_mipi_switch_stop();
+    if (0 != ret) {
+        printf("SC035HGS ax_mipi_switch_stop failed, ret=0x%x\n", ret);
+    }
 }
 
 static AX_VOID sc035hgs_cam_close_one(AX_CAMERA_T *pCam)
@@ -1118,8 +1180,9 @@ static AX_S32 sc035hgs_parse_args(AX_S32 argc, AX_CHAR *argv[], SAMPLE_SC035HGS_
     pArgs->nSyncPtsUs = SC035HGS_DEFAULT_SYNC_US;
     pArgs->nSyncQueueDepth = SC035HGS_SYNC_QUEUE_DEFAULT;
     pArgs->fFps = SC035HGS_DEFAULT_FPS;
+    pArgs->bHwSync = AX_FALSE;
 
-    while ((c = getopt(argc, argv, "c:n:b:t:ds:r:v:p:q:f:h")) != -1) {
+    while ((c = getopt(argc, argv, "c:n:b:t:ds:r:v:p:q:f:yh")) != -1) {
         switch (c) {
         case 'c':
             if (0 != sc035hgs_parse_camera_select(optarg, pArgs)) {
@@ -1156,6 +1219,9 @@ static AX_S32 sc035hgs_parse_args(AX_S32 argc, AX_CHAR *argv[], SAMPLE_SC035HGS_
             break;
         case 'f':
             pArgs->fFps = (AX_F32)strtod(optarg, NULL);
+            break;
+        case 'y':
+            pArgs->bHwSync = AX_TRUE;
             break;
         case 'h':
         default:
@@ -1197,6 +1263,7 @@ int main(int argc, char *argv[])
     AX_BOOL bIvpsInited = AX_FALSE;
     AX_BOOL bVinIvpsLinked = AX_FALSE;
     AX_BOOL bNtInited = AX_FALSE;
+    AX_BOOL bHwSyncStarted = AX_FALSE;
     AX_S32 ret = 0;
     AX_U32 i = 0;
 
@@ -1228,8 +1295,8 @@ int main(int argc, char *argv[])
     }
     bSysInited = AX_TRUE;
 
-    printf("SC035HGS VIN-IVPS mode: %u, sync_pts_us=%u, sync_queue_depth=%u\n",
-           tArgs.nVinIvpsMode, tArgs.nSyncPtsUs, tArgs.nSyncQueueDepth);
+    printf("SC035HGS VIN-IVPS mode: %u, sync_pts_us=%u, sync_queue_depth=%u, hw_sync=%d\n",
+           tArgs.nVinIvpsMode, tArgs.nSyncPtsUs, tArgs.nSyncQueueDepth, tArgs.bHwSync);
     for (i = 0; i < tArgs.nCamCnt; i++) {
         ret = AX_SYS_SetVINIVPSMode(gCams[i].nPipeId, gIvpsGrp[i],
                                     (AX_VIN_IVPS_MODE_E)tArgs.nVinIvpsMode);
@@ -1292,9 +1359,16 @@ int main(int argc, char *argv[])
     }
     bIvpsInited = AX_TRUE;
 
+    ret = sc035hgs_hw_sync_start(gCams, &tArgs);
+    if (ret) {
+        goto EXIT;
+    }
+    bHwSyncStarted = tArgs.bHwSync;
+
     sc035hgs_drain_loop(&tArgs);
 
 EXIT:
+    sc035hgs_hw_sync_stop(bHwSyncStarted);
     if (bNtInited) {
         COMMON_NT_DeInit();
         bNtInited = AX_FALSE;

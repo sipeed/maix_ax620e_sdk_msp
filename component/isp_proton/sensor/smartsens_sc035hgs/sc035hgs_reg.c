@@ -274,12 +274,14 @@ AX_S32 sc035hgs_select_setting(ISP_PIPE_ID nPipeId, camera_i2c_reg_array **setti
     case e_SC035HGS_MIPI_27M_2LANE_640x480_12BIT_SDR_120FPS:
     case e_SC035HGS_MIPI_27M_2LANE_640x480_12BIT_SDR_120FPS_SYNC_MASTER:
     case e_SC035HGS_MIPI_27M_2LANE_640x480_12BIT_SDR_120FPS_SYNC_SLAVE:
+    case e_SC035HGS_MIPI_27M_2LANE_640x480_12BIT_SDR_120FPS_TRIG:
         *setting = SC035HGS_MIPI_27M_2LANE_640x480_12BIT_SDR_120FPS;
         *cnt = sizeof(SC035HGS_MIPI_27M_2LANE_640x480_12BIT_SDR_120FPS) / sizeof(camera_i2c_reg_array);
         break;
     case e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS:
     case e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS_SYNC_MASTER:
     case e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS_SYNC_SLAVE:
+    case e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS_TRIG:
         *setting = SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS;
         *cnt = sizeof(SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS) / sizeof(camera_i2c_reg_array);
         break;
@@ -296,7 +298,15 @@ static AX_BOOL sc035hgs_is_1lane_setting(AX_U32 nImgMode)
 {
     return (nImgMode == e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS ||
             nImgMode == e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS_SYNC_MASTER ||
-            nImgMode == e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS_SYNC_SLAVE) ?
+            nImgMode == e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS_SYNC_SLAVE ||
+            nImgMode == e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS_TRIG) ?
+           AX_TRUE : AX_FALSE;
+}
+
+static AX_BOOL sc035hgs_is_trig_setting(AX_U32 nImgMode)
+{
+    return (nImgMode == e_SC035HGS_MIPI_27M_2LANE_640x480_12BIT_SDR_120FPS_TRIG ||
+            nImgMode == e_SC035HGS_MIPI_24M_1LANE_640x480_12BIT_SDR_120FPS_TRIG) ?
            AX_TRUE : AX_FALSE;
 }
 
@@ -308,6 +318,8 @@ AX_S32 sc035hgs_write_settings(ISP_PIPE_ID nPipeId)
     camera_i2c_reg_array *setting = AX_NULL;
     SNS_STATE_OBJ *sns_obj = AX_NULL;
     AX_BOOL b1Lane = AX_FALSE;
+    AX_BOOL bTrig = AX_FALSE;
+    AX_BOOL bTrigWritten = AX_FALSE;
 
     ret = sc035hgs_select_setting(nPipeId, &setting, &reg_cnt);
     if (ret) {
@@ -317,8 +329,13 @@ AX_S32 sc035hgs_write_settings(ISP_PIPE_ID nPipeId)
     SENSOR_GET_CTX(nPipeId, sns_obj);
     SNS_CHECK_PTR_VALID(sns_obj);
     b1Lane = sc035hgs_is_1lane_setting(sns_obj->eImgMode);
+    bTrig = sc035hgs_is_trig_setting(sns_obj->eImgMode);
 
     for (i = 0; i < reg_cnt; i++) {
+        if (bTrig && (setting + i)->addr == 0x0100 && (setting + i)->value == 0x01) {
+            sc035hgs_write_register(nPipeId, SC035HGS_TRIG_CTRL, SC035HGS_TRIG_ENABLE);
+            bTrigWritten = AX_TRUE;
+        }
         sc035hgs_write_register(nPipeId, (setting + i)->addr, (setting + i)->value);
         if (b1Lane && (setting + i)->addr == 0x36f9) {
             usleep(256 * 1000);
@@ -326,6 +343,9 @@ AX_S32 sc035hgs_write_settings(ISP_PIPE_ID nPipeId)
         if (b1Lane && (setting + i)->addr == 0x0100 && (setting + i)->value == 0x01) {
             usleep(10 * 1000);
         }
+    }
+    if (bTrig && !bTrigWritten) {
+        sc035hgs_write_register(nPipeId, SC035HGS_TRIG_CTRL, SC035HGS_TRIG_ENABLE);
     }
 
     return AX_SNS_SUCCESS;

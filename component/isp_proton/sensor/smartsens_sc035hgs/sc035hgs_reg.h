@@ -24,6 +24,8 @@
 #define SC035HGS_VTS_L              (0x320f)
 #define SC035HGS_HTS_H              (0x320c)
 #define SC035HGS_HTS_L              (0x320d)
+#define SC035HGS_TRIG_CTRL          (0x3222)
+#define SC035HGS_TRIG_ENABLE        (0x02)
 
 #define SC035HGS_GAIN_MAGIC_0       (0x3314)
 #define SC035HGS_GAIN_MAGIC_1       (0x3317)
