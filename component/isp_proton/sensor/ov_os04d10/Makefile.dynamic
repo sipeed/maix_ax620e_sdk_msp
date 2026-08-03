@@ -81,7 +81,8 @@ CFLAGS			+= -DAX_BOOT_OPTIMIZATION_SUPPORT
 endif
 
 # dependency
-CLIB    		+= -lpthread
+LDFLAGS         += -Wl,--no-undefined
+CLIB    		+= -L$(SYS_LIB_PATH) -lax_sys -lpthread
 
 # install
 INSTALL_LIB		:= $(STRIPPED_TARGET) $(DEBUG_TARGET)
