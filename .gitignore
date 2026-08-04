@@ -31,3 +31,4 @@ out/arm_glibc/lib/libsns_sc850sl.*
 out/arm_glibc/lib/libsns_sc450ai.*
 out/arm_glibc/lib/libsns_sc500ai.*
 out/arm_glibc/third-party/
+out/arm_glibc/lib/libsns_sc035hgs.*

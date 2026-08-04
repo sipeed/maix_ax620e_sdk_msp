@@ -39,7 +39,6 @@ typedef struct _AX_SENSOR_LIB_TAB_ {
 extern AX_SENSOR_REGISTER_FUNC_T gSnsdummyObj;
 #endif // SAMPLE_SNS_DUMMY_NO_SUPPORT
 extern AX_SENSOR_REGISTER_FUNC_T gSnsos04a10Obj;
-extern AX_SENSOR_REGISTER_FUNC_T gSnssc035hgsObj;
 #else
 const static AX_SENSOR_LIB_TAB s_libSensorTab[] = {
 #ifndef SAMPLE_SNS_DUMMY_NO_SUPPORT
@@ -79,9 +78,6 @@ AX_SENSOR_REGISTER_FUNC_T *COMMON_ISP_GetSnsObj(SAMPLE_SNS_TYPE_E eSnsType)
 #endif // SAMPLE_SNS_DUMMY_NO_SUPPORT
     case OMNIVISION_OS04A10:
         ptSnsHdl = &gSnsos04a10Obj;
-        break;
-    case SMARTSENS_SC035HGS:
-        ptSnsHdl = &gSnssc035hgsObj;
         break;
     default:
         ptSnsHdl = &gSnsos04a10Obj;
