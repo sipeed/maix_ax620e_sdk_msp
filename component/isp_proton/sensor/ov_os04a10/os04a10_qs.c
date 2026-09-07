@@ -74,6 +74,9 @@ static void os04a10_init(ISP_PIPE_ID nPipeId)
 
     /* 3. config settings  */
     os04a10_write_settings(nPipeId);
+    if (os04a10_apply_crop(nPipeId) != AX_SNS_SUCCESS) {
+        SNS_ERR("apply sensor crop failed\n");
+    }
 #else
     sns_obj->sns_id = OS04A10_SENSOR_ID;
 #endif

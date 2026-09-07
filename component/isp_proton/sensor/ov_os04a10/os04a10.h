@@ -30,6 +30,17 @@ AX_S32 os04a10_sensor_sleep_wakeup(ISP_PIPE_ID nPipeId, AX_SNS_SLEEP_WAKEUP_E eS
 
 AX_S32 os04a10_get_black_level(ISP_PIPE_ID nPipeId, AX_SNS_BLACK_LEVEL_T *ptBlackLevel);
 
+/* Configure a linear-mode sensor ROI before ISP initialization. Coordinates
+ * are in the native 2688x1520 pixel array. */
+AX_SYS_API_PUBLIC AX_S32 os04a10_set_crop(ISP_PIPE_ID nPipeId,
+                                          AX_U32 x, AX_U32 y,
+                                          AX_U32 width, AX_U32 height,
+                                          AX_F32 fps);
+AX_S32 os04a10_apply_crop(ISP_PIPE_ID nPipeId);
+AX_BOOL os04a10_get_crop_timing(ISP_PIPE_ID nPipeId, AX_U32 *height, AX_F32 *fps);
+/* True when the crop request uses the 108 MHz high-speed PLL timing. */
+AX_BOOL os04a10_is_high_speed(ISP_PIPE_ID nPipeId);
+
 AX_S32 os04a10_ctx_init(ISP_PIPE_ID nPipeId);
 AX_VOID os04a10_ctx_exit(ISP_PIPE_ID nPipeId);
 

@@ -21,6 +21,7 @@
 #include "isp_sensor_internal.h"
 
 #include "os04a10_reg.h"
+#include "os04a10.h"
 #include "os04a10_ae_ctrl.h"
 #include "os04a10_settings.h"
 #include "mipi_switch.h"
@@ -87,7 +88,8 @@ AX_U8 gOs04a10SlaveMode[AX_VIN_MAX_PIPE_NUM] = {0};
 /*user config*/
 static AX_F32 gFpsGear[] = {1.00, 2.00, 3.00, 4.00, 5.00, 6.00, 7.00, 8.00, 9.00, 10.00,
                             11.00, 12.00, 13.00, 14.00, 15.00, 16.00, 17.00, 18.00, 19.00, 20.00,
-                            21.00, 22.00, 23.00, 24.00, 25.00, 26.00, 27.00, 28.00, 29.00, 30.00, 60.00
+                            21.00, 22.00, 23.00, 24.00, 25.00, 26.00, 27.00, 28.00, 29.00, 30.00,
+                            60.00, 90.00, 120.00, 180.00, 240.00, 360.00
                            };
 
 AX_U32 g_os04a10MasterVsyncStart = 0x08;  //from setting
@@ -714,6 +716,8 @@ AX_S32 os04a10_get_params_from_setting(ISP_PIPE_ID nPipeId)
 AX_S32 os04a10_cfg_aec_param(ISP_PIPE_ID nPipeId)
 {
     AX_U32 VsyncStart = 0;
+    AX_U32 crop_height = 0;
+    AX_F32 crop_fps = 0.0f;
 
     SNS_STATE_OBJ *sns_obj = AX_NULL;
     SNS_CHECK_VALUE_RANGE_VALID(nPipeId, 0, AX_VIN_MAX_PIPE_NUM - 1);
@@ -722,6 +726,28 @@ AX_S32 os04a10_cfg_aec_param(ISP_PIPE_ID nPipeId)
     SNS_CHECK_PTR_VALID(sns_obj);
 
     os04a10_get_params_from_setting(nPipeId);
+    if (os04a10_is_high_speed(nPipeId)) {
+        /* The high-speed register delta changes SCLK to 108 MHz.  The
+         * setting parser sees the legacy 72 MHz table, so correct it before
+         * deriving line period and VTS. */
+        sns_os04a10params[nPipeId].sclk *= 1.5f;
+    }
+    if (os04a10_get_crop_timing(nPipeId, &crop_height, &crop_fps) && crop_fps > 0.0f) {
+        AX_U32 crop_vts = (AX_U32)(sns_os04a10params[nPipeId].sclk /
+                                   (sns_os04a10params[nPipeId].hts * crop_fps) + 0.5f);
+        /* 108 MHz / (732 HTS * 180 fps) is 819.672 lines. Rounding to
+         * VTS=820 makes the sensor slightly slower than requested; use the
+         * adjacent integer timing for the validated 180-fps binned tier. */
+        if (IS_SNS_FPS_EQUAL(crop_fps, 180.0f) && crop_vts == 820) {
+            crop_vts = 819;
+        }
+        if (crop_vts < crop_height + 16) {
+            SNS_ERR("crop fps %.2f requires vts %u below minimum %u\n",
+                    crop_fps, crop_vts, crop_height + 16);
+            return AX_SNS_ERR_NOT_SUPPORT;
+        }
+        sns_os04a10params[nPipeId].vts = crop_vts;
+    }
     sns_obj->sns_mode_obj.nVts = sns_os04a10params[nPipeId].vts;
     sns_os04a10params[nPipeId].setting_vts = sns_os04a10params[nPipeId].vts;
     sns_os04a10params[nPipeId].setting_fps = sns_obj->sns_mode_obj.fFrameRate;
@@ -1305,8 +1331,13 @@ AX_S32 os04a10_set_fps(ISP_PIPE_ID nPipeId, AX_F32 fFps)
     SENSOR_GET_CTX(nPipeId, sns_obj);
     SNS_CHECK_PTR_VALID(sns_obj);
 
-    if(AXSNS_CAMPARE_FLOAT(AX_SNS_FPS_MIN, fFps) || AXSNS_CAMPARE_FLOAT(fFps, AX_SNS_FPS_MAX)) {
-        SNS_ERR("pipe:%d, fps:%f is not supported, range:[%f-%f]\n", nPipeId, fFps, AX_SNS_FPS_MIN, AX_SNS_FPS_MAX);
+    AX_U32 crop_height = 0;
+    AX_F32 crop_max_fps = AX_SNS_FPS_MAX;
+    if (os04a10_get_crop_timing(nPipeId, &crop_height, &crop_max_fps) == AX_FALSE) {
+        crop_max_fps = AX_SNS_FPS_MAX;
+    }
+    if(AXSNS_CAMPARE_FLOAT(AX_SNS_FPS_MIN, fFps) || AXSNS_CAMPARE_FLOAT(fFps, crop_max_fps)) {
+        SNS_ERR("pipe:%d, fps:%f is not supported, range:[%f-%f]\n", nPipeId, fFps, AX_SNS_FPS_MIN, crop_max_fps);
         return AX_SNS_ERR_NOT_SUPPORT;
     }
 
@@ -1318,6 +1349,12 @@ AX_S32 os04a10_set_fps(ISP_PIPE_ID nPipeId, AX_F32 fFps)
             vts = OS04A10_MAX_VTS;
             SNS_WRN("Beyond max vts:0x%x\n", vts);
         }
+    }
+
+    if (crop_height > 0 && vts < crop_height + 16) {
+        SNS_ERR("pipe:%d, fps:%f requires vts:%u below crop minimum:%u\n",
+                nPipeId, fFps, vts, crop_height + 16);
+        return AX_SNS_ERR_NOT_SUPPORT;
     }
 
     os04a10_set_vts(nPipeId, vts);
@@ -1356,8 +1393,12 @@ AX_S32 os04a10_set_slow_fps(ISP_PIPE_ID nPipeId, AX_F32 fFps)
     SENSOR_GET_CTX(nPipeId, sns_obj);
     SNS_CHECK_PTR_VALID(sns_obj);
 
-    if(AXSNS_CAMPARE_FLOAT(AX_SNS_FPS_MIN, fFps) || AXSNS_CAMPARE_FLOAT(fFps, AX_SNS_FPS_MAX)) {
-        SNS_ERR("pipe:%d, fps:%f is not supported, range:[%f-%f]\n", nPipeId, fFps, AX_SNS_FPS_MIN, AX_SNS_FPS_MAX);
+    AX_F32 max_fps = AX_SNS_FPS_MAX;
+    if (os04a10_get_crop_timing(nPipeId, AX_NULL, &max_fps) == AX_FALSE) {
+        max_fps = AX_SNS_FPS_MAX;
+    }
+    if(AXSNS_CAMPARE_FLOAT(AX_SNS_FPS_MIN, fFps) || AXSNS_CAMPARE_FLOAT(fFps, max_fps)) {
+        SNS_ERR("pipe:%d, fps:%f is not supported, range:[%f-%f]\n", nPipeId, fFps, AX_SNS_FPS_MIN, max_fps);
         return AX_SNS_ERR_NOT_SUPPORT;
     }
 
@@ -1455,6 +1496,7 @@ AX_S32 os04a10_get_slow_shutter_param(ISP_PIPE_ID nPipeId, AX_SNS_AE_SLOW_SHUTTE
     AX_S32 framerate = 30;
     AX_U32 nfps = 0;
     AX_U32 nVts = 0;
+    AX_F32 max_fps = AX_SNS_FPS_MAX;
 
     SNS_STATE_OBJ *sns_obj = AX_NULL;
 
@@ -1464,7 +1506,10 @@ AX_S32 os04a10_get_slow_shutter_param(ISP_PIPE_ID nPipeId, AX_SNS_AE_SLOW_SHUTTE
     SNS_CHECK_PTR_VALID(sns_obj);
 
     framerate = sns_obj->sns_mode_obj.fFrameRate;
-    if (SNS_MAX_FRAME_RATE < framerate) {
+    if (os04a10_get_crop_timing(nPipeId, AX_NULL, &max_fps) == AX_FALSE) {
+        max_fps = AX_SNS_FPS_MAX;
+    }
+    if (max_fps < framerate) {
         SNS_ERR("framerate out of range : %d\n", framerate);
         return AX_SNS_ERR_ILLEGAL_PARAM;
     }
