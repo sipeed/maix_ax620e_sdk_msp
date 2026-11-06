@@ -15,7 +15,7 @@ out/arm64_glibc/ta/*.ta
 out/arm64_glibc/lib/libsns_sc450ai.*
 out/arm64_glibc/lib/libsns_sc500ai.*
 out/arm64_glibc/third-party
-out/arm64_glibc/lib/libsns_sc035hgs.debug
+out/arm64_glibc/lib/libsns_sc035hgs.*
 
 out/arm_glibc/bin/sample_*
 out/arm_glibc/bin/FRTDemo
